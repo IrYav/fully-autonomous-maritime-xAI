@@ -242,8 +242,11 @@ def generate_islands(count: int,
     points = np.vstack((left, right[::-1]))
 
     polygon = Polygon(points)
+    
+    #Random rotation of the entire angle
     angle = np.random.uniform(0, 360)
     polygon = rotate(polygon, angle, origin='centroid')
+
     return polygon, curve
 
   islands = []
@@ -253,7 +256,7 @@ def generate_islands(count: int,
 
   #Generate and Validate
   while len(islands) < islandCount:
-    islePoints = np.random.random((2,2)) * scale + boundary[0] #Enforce min distance later
+    islePoints = np.random.random((2,2)) * scale + boundary[0] #TODO: Enforce min distance later
 
     radius = np.clip(
       np.random.uniform(0.2, 0.35) * np.linalg.norm(islePoints[1] - islePoints[0]),

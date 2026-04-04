@@ -1,7 +1,11 @@
+from shapely import Polygon, box
+
 from xAgent.Environment.environment import generate_points, projection_sort, interpolate, get_corridor, generate_islands
+from xAgent.Environment.mesh import build_mesh
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.tri as mtri
 from matplotlib.widgets import Button, CheckButtons
 from shapely.plotting import plot_polygon
 import shapely.validation as val
@@ -20,7 +24,6 @@ def main():
   button = Button(button_ax, "New Instance")
   button.on_clicked(update)
   plt.sca(ax)
-  print("Showing in:", ax)
   plt.show()
 # --- Pipeline (single source of truth) ---
 def newInstance():
@@ -32,13 +35,15 @@ def newInstance():
   xmin, ymin = center - halfsize
   xmax, ymax = center + halfsize
 
-  #Calculate new graphs
+  #Calculate new instance
   points = generate_points(n_points, boundary) 
   points = projection_sort(points)
   spline = interpolate(points)
   curve = spline(u_eval)
   corridor = get_corridor(spline, 500, 3.5)
   islands, curve = generate_islands(6,corridor, boundary * 1.5)
+  mesh = build_mesh(islands, boundary)
+
   #Plot new graphs
   ax.clear()
   #pointsRef = ax.plot(points[:, 0], points[:, 1])
@@ -46,6 +51,7 @@ def newInstance():
 
   plot_polygon(corridor, ax=ax, color= "lightgray", add_points=False)
   plot_polygon(islands,  ax=ax, color= "lightgreen", add_points=False,)
+  plot_mesh(mesh)
   ax.set_aspect('equal', adjustable='box')
   ax.set_xlabel("Distance (100 m)")
   ax.set_ylabel("Distance (100 m)")
@@ -56,6 +62,17 @@ def newInstance():
   fig.canvas.draw_idle()
   return
   
+def plot_mesh(mesh):
+  points = mesh.points[:, :2]
+  triangles = mesh.cells_dict["triangle"]
+
+  triang = mtri.Triangulation(
+    points[:, 0],
+    points[:, 1],
+    triangles
+  )
+
+  plt.triplot(triang, linewidth=0.5)
 # --- Update callback ---
 def update(event):
   newInstance()
