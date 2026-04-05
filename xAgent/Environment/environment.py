@@ -3,13 +3,24 @@ import numpy as np
 
 from scipy.interpolate import make_interp_spline, BSpline
 from shapely.geometry.base import BaseGeometry
-from shapely.geometry import LineString, Polygon, MultiPolygon
+from shapely.geometry import LineString, Polygon, MultiPolygon, box
 from shapely.affinity import rotate
 from shapely.ops import unary_union
 
 Point  = np.ndarray  # shape (2,)
 Points = np.ndarray  # shape (n,2)
 Boundary = np.ndarray # shape (2,2)
+
+#The environment has 
+class Environment:
+  islands: MultiPolygon
+  corridor: Polygon
+  boundary: Polygon
+
+  def __init__(self, islands, corridor, boundary) -> None:
+    self.islands = islands
+    self.corridor = corridor
+    self.boundary = boundary
 
 # Cubic B-splines
 def interpolate(points: Points) -> BSpline:
@@ -123,7 +134,7 @@ def walk_around_perimeter(dist:float, width:float, height:float) -> Point:
     p0 = 0, height - (dist - 2 * width - height)
   return np.array(p0, dtype=float)
 
-def get_corridor(bsp: BSpline, samples: int, bufferSize: float) -> BaseGeometry:
+def get_corridor(bsp: BSpline, samples: int, bufferSize: float) -> Polygon:
   """
   Get a polygon-corridor, consisting of `splines` many piecewise linear elements,
   with a buffer wide distance to both sides of the sampled spline.
@@ -270,6 +281,31 @@ def generate_islands(count: int,
 
   return MultiPolygon(islands), curve
 
+def new_environment(boundary, num_path_points=5, num_islands=6, corridor_width=3.5) -> Environment:
+  '''
+    Generate a new environment, including a free corridor and non-overlapping islands.
+    The free corridor guarantees a navigable path, though simpler paths may exist.
+    Args:
+      boundary: A numpy (2,2) array. Countains Path. Islands are not necessarily contained by the boundary.
+      num_path_points: Number of path points, more points create a more complex path.
+      num_islands: Number of islands. Uses generate and validate, thus too big numbers might cause issues.
+      corridor_width: Width of the corridor.
+    Returns:
+      A pre-filled `Environment` object.
+  '''
+  # Get n points for a path
+  points = generate_points(num_path_points, boundary)
+  # Pick them in an useful order 
+  points = projection_sort(points)
+  #Interpolate them, this is the path center
+  spline = interpolate(points)
+  #Make the path into a Polygon with sufficient width
+  corridor = get_corridor(spline, 500, corridor_width * 0.5)
+  #Create non-overlapping islands outside of the corridor.
+  islands, _ = generate_islands(num_islands,corridor, boundary * 1.5)
+  #Repack boundary into a polygon.
+  pboundary = box(*boundary[0], *boundary[1])
+  return Environment(islands, corridor, pboundary)
 #Different difficulty levels
 #Maybe a few hand picked ones.
 

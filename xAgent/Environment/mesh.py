@@ -10,7 +10,7 @@ from shapely.geometry.base import BaseGeometry
 
 
 
-def build_mesh(islands: MultiPolygon, boundary, h=5.0, eps= 0.5):
+def build_mesh(islands: MultiPolygon, boundary, h=5.0, eps=0.5):
   """
     Builds a 2D mesh for a rectangular domain with polygonal obstacles ("islands").
 
