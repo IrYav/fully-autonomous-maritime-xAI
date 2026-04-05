@@ -263,12 +263,11 @@ def generate_islands(count: int,
   islands = []
   scale = np.abs(boundary[1] - boundary[0])
 
-  islandCount = 15#random.randint(3,3)
+  islandCount = 15
 
   #Generate and Validate
   while len(islands) < islandCount:
     islePoints = np.random.random((2,2)) * scale + boundary[0] #TODO: Enforce min distance later
-
     radius = np.clip(
       np.random.uniform(0.2, 0.35) * np.linalg.norm(islePoints[1] - islePoints[0]),
       0.05 * np.mean(scale),
@@ -301,8 +300,10 @@ def new_environment(boundary, num_path_points=5, num_islands=6, corridor_width=3
   spline = interpolate(points)
   #Make the path into a Polygon with sufficient width
   corridor = get_corridor(spline, 500, corridor_width * 0.5)
+  #Bigger boundary so some islands can be outside.
+  islandBoundary = (boundary - boundary.mean(axis=0)) * 1.5 + boundary.mean(axis=0) 
   #Create non-overlapping islands outside of the corridor.
-  islands, _ = generate_islands(num_islands,corridor, boundary * 1.5)
+  islands, _ = generate_islands(num_islands,corridor, islandBoundary)
   #Repack boundary into a polygon.
   pboundary = box(*boundary[0], *boundary[1])
   return Environment(islands, corridor, pboundary)

@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.tri as mtri
-import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QWidget, QVBoxLayout, QPushButton
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as Canvas
@@ -11,8 +11,6 @@ from shapely.plotting import plot_polygon
 class EnvironmentViewer(QWidget):
   def __init__(self, boundary):
     super().__init__()
-
-    self.boundary = boundary
 
     # State
     self.env = None
@@ -26,9 +24,10 @@ class EnvironmentViewer(QWidget):
     }
 
     # Matplotlib Figure
-    self.fig, self.ax = plt.subplots()
+    self.fig = Figure()
+    self.ax = self.fig.add_subplot(111)
     self.canvas = Canvas(self.fig)
-    
+
     self.toolbar = NavigationToolbar2QT(self.canvas, self)
 
     layout = QVBoxLayout()
@@ -41,11 +40,6 @@ class EnvironmentViewer(QWidget):
 
     self.setLayout(layout)
 
-  # ---------- Events ----------
-  def _on_new_instance(self):
-    if self.on_new_instance is not None:
-      self.on_new_instance(self)
-
   # ---------- Public API ----------
   def set_state(self, env, mesh):
     self.env = env
@@ -54,7 +48,7 @@ class EnvironmentViewer(QWidget):
 
   def add_button(self, label, callback):
     btn = QPushButton(label)
-    btn.clicked.connect(lambda: callback(self))
+    btn.clicked.connect(lambda *_: callback(self))
     self.button_layout.addWidget(btn)
     return btn
 
@@ -101,7 +95,7 @@ class EnvironmentViewer(QWidget):
       triangles
     )
 
-    self.artists["mesh"] = self.ax.triplot(triang, linewidth=0.5)
+    self.artists["mesh"] = self.ax.triplot(triang, linewidth=0.5, color="gray")
 
   # ---------- Utilities ----------
   def _remove_artist(self, name):

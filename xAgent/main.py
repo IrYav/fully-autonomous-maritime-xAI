@@ -10,7 +10,7 @@ import xAgent.Visualization.visEnvironment as vis
 
 
 # 
-boundary = np.array([[5, -50], [150, 100]], dtype=float)
+boundary = np.array([[-800, -800], [-600, -600]], dtype=float)
 n_points = 5
 
 
@@ -23,10 +23,13 @@ n_points = 5
 #Probe
 #Verify Probe
 def main():
+  # Initialize
   app = QApplication(sys.argv)
   viewer = vis.EnvironmentViewer(boundary)
 
+  # Buttons, Toggleboxes, etc.
   viewer.add_button("New Instance", newTrainingInstance)
+
 
   viewer.show()
 
