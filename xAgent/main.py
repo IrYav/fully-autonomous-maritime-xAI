@@ -30,7 +30,7 @@ def main():
   return 
 
 def newTrainingInstance(viewer):
-  env = envi.new_environment(boundary)
+  env = envi.new_environment(boundary, num_islands=15)
   prepped_mesh = mesher_prep.prepare_domain(env.islands, env.end, boundary, h=5, eps = 0.5)
   mesh = mesher.build_mesh(prepped_mesh)
   bc = HarmonicField.get_boundary_conditions(mesh)

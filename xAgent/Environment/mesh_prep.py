@@ -2,32 +2,25 @@ import math
 import numpy as np
 
 from dataclasses import dataclass
+from shapely import difference, orient_polygons
 from shapely.geometry import Point, LineString, GeometryCollection, box, Polygon, MultiPolygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
-from shapely import difference
 
-# Contains a part of the Boundary, 
+# Closed 
 @dataclass
-class BoundarySegment:
-    curve: LineString
-    label: str
-
-@dataclass
-class Hole:
-  poly: Polygon
-  label: str
+class LabeledRing:
+  coords: list[tuple[float, float]]
+  labels: list[str]
+  tag: str
 
 class PreparedDomain():
-  boundary: list[BoundarySegment]
-  holes: list[Hole]
+  rings: list[LabeledRing]
   h: float
   eps: float
 
-  def __init__(self, boundary, holes, end_polygon, h, eps) -> None:
-    self.boundary = boundary
-    self.holes = holes
-    self.end_polygon = end_polygon
+  def __init__(self, rings, h, eps) -> None:
+    self.rings = rings
     self.h = h
     self.eps = eps
 
@@ -93,19 +86,12 @@ def prepare_domain(islands: MultiPolygon, end: Point, boundary, h=5.0, eps=0.5) 
 
   domain = _flatten_domain(domain)
 
-  domain.normalize()
+  domain = orient_polygons(domain)
 
-  # Get all proper holes and label them.
-  holes = [
-    Hole(Polygon(ring), f"island_{i}")
-    for i, ring in enumerate(domain.interiors)
-  ]
+  #Label and prepare for gmsh.
+  labeled_rings = label_domain(domain, islands, end_poly)
 
-  #Segment boundary properly, so that the labelling works.
-  boundary_segments = extract_boundary_segments(domain, islands, end_poly, isle_offset = len(holes))
-  boundary_segments = order_segments_into_loop(boundary_segments)
-
-  return PreparedDomain(boundary_segments, holes, end_poly, h, eps)
+  return PreparedDomain(labeled_rings, h, eps)
    
 
 #TODO: Redo the code. Should still work however.
@@ -248,7 +234,7 @@ def get_end_polygon(end: Point, radius: float):
   end = end.buffer(radius, quad_segs=4)
   return end
 
-def close_gaps(islands, l):
+def close_gaps(notImplementedYet):
   """
     If there are gaps < l, fill them up. 
     Mesher will likely misbehave in there, if gap is smaller than the resolution.
@@ -257,109 +243,71 @@ def close_gaps(islands, l):
   raise NotImplementedError()
   return
 
-def extract_boundary_segments(domain, islands, end_poly, tol=1e-6, isle_offset = 0) -> list[BoundarySegment]:
-  #TODO Documentation
-  B = domain.exterior
-
-  # Get overlaps.
-  end_part = end_poly.boundary.intersection(B)
-  
-  island_parts = []
-  for isle in islands:
-    part = isle.boundary.intersection(B)
-    if not part.is_empty:
-      island_parts.append(part)
-
-  end_lines = _flatten_lines(end_part)
-  island_lines = [
-    l for g in island_parts for l in _flatten_lines(g)
-  ]
-
-  # Every non-boundary part
-  all_parts = unary_union(end_lines + island_lines)
-
-  # Unassigned boundary segments
-  outer_geom = B.difference(all_parts)
-  outer_lines = _flatten_lines(outer_geom)
-
-  segments = []
-
-  # Label all categories
-  for l in end_lines:
-    segments.append(BoundarySegment(l, "end"))
-
-  for i, l in enumerate(island_lines):
-    segments.append(BoundarySegment(l, f"island_{i+isle_offset}"))
-
-  for l in outer_lines:
-    segments.append(BoundarySegment(l, "outer"))
-
-  # Error handling:
-  _assert_on_boundary(segments, domain, tol)
-  _assert_cover(segments, domain, tol)
-  _assert_no_overlap(segments, tol)
-
-  return segments
-
-def order_segments_into_loop(segments: list[BoundarySegment], tol=1e-9):
+def label_domain(domain, islands, end_poly, tol=1e-6) -> list[LabeledRing]:
   """
-  Sorts segments, so that the segments form a closed loop.
-  Args:
-    segments: list[BoundarySegment]
+  Labels all boundary edges of domain (exterior + interiors).
+
+  Priority:
+    island > end > outer (exterior) / unknown (interior)
+
   Returns:
-    ordered list of BoundarySegment forming a closed loop
-  Raises:
-    RuntimeError: If segments can't form a loop.
+    list[LabeledRing]
   """
 
-  unused = segments.copy()
-  ordered = []
+  rings = []
 
-  # 
-  current = unused.pop(0)
-  ordered.append(current)
+  # Precompute boundaries
+  end_boundary = end_poly.boundary
+  island_boundaries = [isle.boundary for isle in islands]
 
-  while unused:
-    end_pt = current.curve.coords[-1]
+  # Edge classification, with priority.
+  def classify_edge(edge: LineString):
+    # 1) islands (highest priority)
+    for i, isle_b in enumerate(island_boundaries):
+      inter = edge.intersection(isle_b)
+      if not inter.is_empty and inter.length > tol:
+        return f"island_{i}"
 
-    found = False
+    # 2) end
+    inter = edge.intersection(end_boundary)
+    if not inter.is_empty and inter.length > tol:
+      return "end"
 
-    for i, seg in enumerate(unused):
-      coords = list(seg.curve.coords)
+    # 3) fallback handled outside
+    return None
 
-      coords = seg.curve.coords
+  # --- process a single ring ---
+  def process_ring(ring, tag, is_exterior):
+    coords = list(ring.coords)
+    n = len(coords) - 1
 
-      #End matches this start.
-      if _points_equal(coords[0], end_pt, tol):
-        current = seg
+    labels = []
 
-      #End matches this end, needs a flip.
-      elif _points_equal(coords[-1], end_pt, tol):
-        current = type(seg)(seg.curve.reverse(), seg.label)
+    for i in range(n):
+      p = coords[i]
+      q = coords[i+1]
+      edge = LineString([p, q])
 
-      else:
-        continue
+      lab = classify_edge(edge)
 
-      ordered.append(current)
-      unused.pop(i)
-      found = True
-      break
+      if lab is None:
+        if is_exterior:
+          lab = "outer"
+        else:
+          lab = "unknown"
 
-    if not found:
-      for i, seg in enumerate(segments):
-        coords = list(seg.curve.coords)
-        print(f"{i} | {seg.label} | start={coords[0]} | end={coords[-1]} | n={len(coords)}")
-      print(end_pt)
-      raise RuntimeError("Could not connect segments into a loop")
+      labels.append(lab)
 
-  # Check closure.
-  start_pt = ordered[0].curve.coords[0]
-  end_pt = ordered[-1].curve.coords[-1]
+    return LabeledRing(coords=coords, labels=labels, tag=tag)
 
-  if not _points_equal(start_pt, end_pt, tol):
-    raise RuntimeError("Segments do not form a closed loop")
+  # --- exterior ---
+  rings.append(process_ring(domain.exterior, "exterior", True))
 
-  return ordered
+  # --- interiors ---
+  for k, ring in enumerate(domain.interiors):
+    rings.append(process_ring(ring, f"interior_{k}", False))
+
+  return rings
 
 def _assert_on_boundary(segments, domain, tol=1e-6):
   '''
