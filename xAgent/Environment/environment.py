@@ -2,24 +2,25 @@ import random
 import numpy as np
 
 from scipy.interpolate import make_interp_spline, BSpline
-from shapely.geometry.base import BaseGeometry
 from shapely.geometry import LineString, Polygon, MultiPolygon, box
 from shapely.affinity import rotate
-from shapely.ops import unary_union
 
 Point  = np.ndarray  # shape (2,)
 Points = np.ndarray  # shape (n,2)
 Boundary = np.ndarray # shape (2,2)
 
-#The environment has 
 class Environment:
   islands: MultiPolygon
   corridor: Polygon
+  start: Point
+  end: Point
   boundary: Polygon
 
-  def __init__(self, islands, corridor, boundary) -> None:
+  def __init__(self, islands, corridor, start, end, boundary) -> None:
     self.islands = islands
     self.corridor = corridor
+    self.start = start
+    self.end = end
     self.boundary = boundary
 
 # Cubic B-splines
@@ -153,8 +154,7 @@ def get_corridor(bsp: BSpline, samples: int, bufferSize: float) -> Polygon:
 
 def generate_islands(count: int, 
                     corridor: Polygon, 
-                    boundary: Boundary, 
-                    max_attempts: int = 10_000) -> MultiPolygon:
+                    boundary: Boundary) -> MultiPolygon:
   """
   Generate at least `count` islands, with the corridor region staying island free.
 
@@ -263,10 +263,8 @@ def generate_islands(count: int,
   islands = []
   scale = np.abs(boundary[1] - boundary[0])
 
-  islandCount = 15
-
   #Generate and Validate
-  while len(islands) < islandCount:
+  while len(islands) < count:
     islePoints = np.random.random((2,2)) * scale + boundary[0] #TODO: Enforce min distance later
     radius = np.clip(
       np.random.uniform(0.2, 0.35) * np.linalg.norm(islePoints[1] - islePoints[0]),
@@ -296,6 +294,7 @@ def new_environment(boundary, num_path_points=5, num_islands=6, corridor_width=3
   points = generate_points(num_path_points, boundary)
   # Pick them in an useful order 
   points = projection_sort(points)
+  start, end = points[0], points[-1]
   #Interpolate them, this is the path center
   spline = interpolate(points)
   #Make the path into a Polygon with sufficient width
@@ -306,7 +305,7 @@ def new_environment(boundary, num_path_points=5, num_islands=6, corridor_width=3
   islands, _ = generate_islands(num_islands,corridor, islandBoundary)
   #Repack boundary into a polygon.
   pboundary = box(*boundary[0], *boundary[1])
-  return Environment(islands, corridor, pboundary)
+  return Environment(islands, corridor, start, end, pboundary)
 #Different difficulty levels
 #Maybe a few hand picked ones.
 

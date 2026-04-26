@@ -4,24 +4,17 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 #Internal
+from xAgent.Environment.harmonic import HarmonicField
 import xAgent.Environment.environment as envi
+import xAgent.Environment.mesh_prep as mesher_prep
 import xAgent.Environment.mesh as mesher
 import xAgent.Visualization.visEnvironment as vis
 
 
-# 
 boundary = np.array([[-800, -800], [-600, -600]], dtype=float)
 n_points = 5
 
 
-#Generate agent.
-#Train agent.
-#Visualize
-#Modify
-#\Delta-Lime
-#SP-\Delta-Lime
-#Probe
-#Verify Probe
 def main():
   # Initialize
   app = QApplication(sys.argv)
@@ -29,8 +22,6 @@ def main():
 
   # Buttons, Toggleboxes, etc.
   viewer.add_button("New Instance", newTrainingInstance)
-
-
   viewer.show()
 
   newTrainingInstance(viewer)
@@ -40,10 +31,11 @@ def main():
 
 def newTrainingInstance(viewer):
   env = envi.new_environment(boundary)
-  mesh = mesher.build_mesh(env.islands, boundary)
-  viewer.set_state(env, mesh)
+  prepped_mesh = mesher_prep.prepare_domain(env.islands, env.end, boundary, h=5, eps = 0.5)
+  mesh = mesher.build_mesh(prepped_mesh)
+  bc = HarmonicField.get_boundary_conditions(mesh)
+  field = HarmonicField(mesh, bc)
 
-def renderNew():
-  return
-
+  viewer.set_state(env, mesh, field)
+  
 main()
