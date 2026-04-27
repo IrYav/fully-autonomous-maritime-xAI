@@ -13,7 +13,8 @@ class HarmonicField:
   finder: mtri.TriFinder
   grad: np.ndarray
   u: np.ndarray
-
+  edge_labels: dict[frozenset[int], str]
+  
   def __init__(self, gmsh_mesh: Mesh, bc: list[tuple[npt.NDArray[np.int_], float]]):
     '''
       Creates the harmonic field on the mesh, given the boundary conditions.
@@ -27,40 +28,29 @@ class HarmonicField:
       Returns:
         A HarmonicField, satisfying the boundary conditions.
     '''
-    # convert meshio → skfem
+    # --- Mesh conversion ---
     points = gmsh_mesh.points[:, :2].T
     triangles = gmsh_mesh.cells_dict["triangle"].T
-
     self.mesh = MeshTri(points, triangles)
 
-    # FEM solve
-    basis = Basis(self.mesh, ElementTriP1())
+    # --- Boundary topology ---
+    self.edge_labels = self._extract_edge_labels(gmsh_mesh)
 
-    A = asm(laplace, basis)
-    b = np.zeros(A.shape[0])
+    # --- FEM system ---
+    A, b_vec, basis = self._build_system(self.mesh)
 
-    # Dirichlet values
-    x = np.zeros(A.shape[0])
-    dirichlet_nodes = []
+    # --- Solve Dirichlet problem ---
+    self.u = self._solve_dirichlet(A, b_vec, bc, A.shape[0])
 
-    for nodes, value in bc:
-      x[nodes] = value
-      dirichlet_nodes.append(nodes)
-
-    D = np.unique(np.concatenate(dirichlet_nodes))
-    
-    A2, b2, x_full, I = condense(A, b, D=D, x=x)
-
-    u_reduced = solve(A2, b2)
-
-    x_full[I] = u_reduced
-    self.u = x_full
-
-    # triangle locator
-    self.tri = mtri.Triangulation(self.mesh.p[0], self.mesh.p[1], self.mesh.t.T)
+    # --- Triangle locator ---
+    self.tri = mtri.Triangulation(
+      self.mesh.p[0],
+      self.mesh.p[1],
+      self.mesh.t.T
+    )
     self.finder = self.tri.get_trifinder()
 
-    # gradient per triangle (P1 ⇒ constant inside triangle)
+    # --- Gradient (P1 → constant per triangle) ---
     interp = basis.interpolate(self.u)
     self.grad = interp.grad[:, :, 0]
 
@@ -94,6 +84,58 @@ class HarmonicField:
 
     return bc
   
+  @staticmethod
+  def _extract_edge_labels(gmsh_mesh: Mesh) -> dict[frozenset[int], str]:
+    edge_labels = {}
+
+    # Mapping: physical id → name
+    id_to_name = {
+      data[0]: name
+      for name, data in gmsh_mesh.field_data.items()
+    }
+
+    for cells, phys in zip(gmsh_mesh.cells, gmsh_mesh.cell_data["gmsh:physical"]):
+      if cells.type != "line":
+        continue
+
+      lines = cells.data  # shape (n_lines, 2)
+
+      for line, group_id in zip(lines, phys):
+        name = id_to_name.get(group_id, None)
+        if name is None:
+          continue
+
+        i, j = int(line[0]), int(line[1])
+        key = frozenset((i, j))
+
+        edge_labels[key] = name
+
+    return edge_labels
+  
+  @staticmethod
+  def _build_system(mesh):
+    basis = Basis(mesh, ElementTriP1())
+    A = asm(laplace, basis)
+    b = np.zeros(A.shape[0])
+    return A, b, basis
+  
+  @staticmethod
+  def _solve_dirichlet(A, b, bc, n_dofs):
+    x = np.zeros(n_dofs)
+    dirichlet_nodes = []
+
+    for nodes, value in bc:
+      x[nodes] = value
+      dirichlet_nodes.append(nodes)
+
+    D = np.unique(np.concatenate(dirichlet_nodes))
+
+    A2, b2, x_full, I = condense(A, b, D=D, x=x)
+    u_reduced = solve(A2, b2)
+    x_full[I] = u_reduced
+
+    return x_full
+
   def gradient_at_(self, position: np.ndarray, normalized=True) -> np.ndarray:
     tri_id = self.finder(*position)
     gradient = self.grad[:, tri_id]
@@ -106,7 +148,6 @@ class HarmonicField:
     if norm == 0:
       return np.zeros_like(gradient)
     return gradient / norm
-
 
   def descend(self, position: np.ndarray, step: float = 0.01, max_steps: int = 1000):
     #TODO: Try Edge-Walker Alg

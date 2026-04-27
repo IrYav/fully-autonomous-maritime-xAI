@@ -1,5 +1,6 @@
 import random
 import numpy as np
+import shapely.geometry as sgeom
 
 from scipy.interpolate import make_interp_spline, BSpline
 from shapely.geometry import LineString, Polygon, MultiPolygon, box
@@ -13,14 +14,14 @@ class Environment:
   islands: MultiPolygon
   corridor: Polygon
   start: Point
-  end: Point
+  end_poly: Polygon
   boundary: Polygon
 
-  def __init__(self, islands, corridor, start, end, boundary) -> None:
+  def __init__(self, islands, corridor, start, end_poly, boundary) -> None:
     self.islands = islands
     self.corridor = corridor
     self.start = start
-    self.end = end
+    self.end_poly = end_poly
     self.boundary = boundary
 
 # Cubic B-splines
@@ -278,7 +279,15 @@ def generate_islands(count: int,
 
   return MultiPolygon(islands), curve
 
-def new_environment(boundary, num_path_points=5, num_islands=6, corridor_width=3.5) -> Environment:
+def _get_end_polygon(end: Point, radius: float):
+  '''
+    Returns a regular 16-gon around end, with the given radius.
+  '''
+  end = sgeom.Point(*end)
+  end = end.buffer(radius, quad_segs=4)
+  return end
+
+def new_environment(boundary, num_path_points=5, num_islands=6, corridor_width=3.5, end_radius = 5) -> Environment:
   '''
     Generate a new environment, including a free corridor and non-overlapping islands.
     The free corridor guarantees a navigable path, though simpler paths may exist.
@@ -305,7 +314,10 @@ def new_environment(boundary, num_path_points=5, num_islands=6, corridor_width=3
   islands, _ = generate_islands(num_islands,corridor, islandBoundary)
   #Repack boundary into a polygon.
   pboundary = box(*boundary[0], *boundary[1])
-  return Environment(islands, corridor, start, end, pboundary)
+  #Target Area
+  end_poly = _get_end_polygon(end,end_radius)
+  
+  return Environment(islands, corridor, start, end_poly, pboundary)
 #Different difficulty levels
 #Maybe a few hand picked ones.
 

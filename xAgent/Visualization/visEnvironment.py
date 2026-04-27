@@ -5,7 +5,7 @@ from matplotlib.figure import Figure
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QWidget, QVBoxLayout, QPushButton
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as Canvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT
-from shapely.plotting import plot_polygon
+from shapely.plotting import plot_polygon, plot_line
 
 
 class EnvironmentViewer(QWidget):
@@ -44,7 +44,6 @@ class EnvironmentViewer(QWidget):
 
     self.fig.canvas.mpl_connect('button_press_event', self.on_click)
     self.setLayout(layout)
-
   # ---------- Public API ----------
   def set_state(self, env, mesh, harmonic_field):
     self.env = env
@@ -66,6 +65,7 @@ class EnvironmentViewer(QWidget):
     self._draw_environment()
     self._draw_mesh()
     self._draw_potential()
+    
     self.canvas.draw()
 
   def _draw_environment(self):
@@ -103,7 +103,6 @@ class EnvironmentViewer(QWidget):
     )
 
     self.artists["mesh"] = self.ax.triplot(triang, linewidth=0.5, color="gray")
-
    
   def _draw_potential(self, stride=3):
 
@@ -211,10 +210,28 @@ class EnvironmentViewer(QWidget):
       print("Gradient (normalized):", grad/norm)
     else:
       print("Gradient (normalized): n/a (norm == 0)")
-    # Log Scale (So we can)
+    # Log Scale
     u_safe = np.clip(values, 1e-300, None)
     print("u in power of 10: 10^", np.log10(u_safe))
 
+    # --- Edge labels ---
+    print("Edge labels:")
+
+    edges = [
+      (tri[0], tri[1]),
+      (tri[1], tri[2]),
+      (tri[2], tri[0]),
+    ]
+
+    for i, j in edges:
+      key = frozenset((int(i), int(j)))
+      label = self.harfield.edge_labels.get(key, None)
+
+      #Doesn't belong to border part of the domain.
+      if label is None:
+        label = "interior"
+
+      print(f"  Edge ({i}, {j}): {label}")
   
   def on_click(self, event):
     if event.inaxes != self.ax:
