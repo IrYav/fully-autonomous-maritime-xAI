@@ -10,11 +10,10 @@ import xAgent.Environment.mesh_prep as mesher_prep
 import xAgent.Environment.mesh as mesher
 import xAgent.Visualization.visEnvironment as vis
 
-
+#Rectangle for agent.
 boundary = np.array([[-800, -800], [-600, -600]], dtype=float)
-n_points = 5
-h = 5
-eps = 0.5
+h = 5#np.max(boundary[1] - boundary[0]) / 40 # Mesh Resolution
+eps = 0.5 # Affects island simplification before mesher input. Higher means simpler.
 
 def main():
   # Initialize
