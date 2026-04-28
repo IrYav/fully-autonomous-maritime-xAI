@@ -104,7 +104,7 @@ class EnvironmentViewer(QWidget):
 
     self.artists["mesh"] = self.ax.triplot(triang, linewidth=0.5, color="gray")
    
-  def _draw_potential(self, stride=3):
+  def _draw_potential(self, stride=5):
 
     tri = self.harfield.tri
     phi = self.harfield.u
@@ -118,12 +118,17 @@ class EnvironmentViewer(QWidget):
     self._remove_artist("potential_fill")
     self._remove_artist("gradient")
 
+    #eps = 1e-6
+    #phi = np.log10(phi + eps)
+
+    levels = np.linspace(0, 1, 10)
+    levels = levels**10 # More levels for lower potential
     #Contour
-    contour = self.ax.tricontour(tri, phi, levels=30)
+    contour = self.ax.tricontour(tri, phi, levels=levels, alpha = 1)
     self.artists["potential_contour"] = contour
 
     #Filled contour (optional)
-    fill = self.ax.tricontourf(tri, phi, levels=30, alpha=0.3)
+    fill = self.ax.tricontourf(tri, phi, levels=levels, alpha=0.2)
     self.artists["potential_fill"] = fill
 
     #Zentroiden

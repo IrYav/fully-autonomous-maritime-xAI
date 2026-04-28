@@ -247,8 +247,9 @@ def label_domain(domain: Polygon, islands: list[Polygon], end_poly: Polygon, tol
   rings = []
 
   # Precompute boundaries
-  end_boundary = end_poly.exterior.buffer(1e-10)#.intersection(domain.boundary)
+  end_boundary = end_poly.exterior.buffer(1e-10)
   island_boundaries = [isle.exterior.buffer(1e-10) for isle in islands]
+
   # Edge classification, with priority.
   def classify_edge(edge: LineString, tol=1e-9):
     best_label = None
