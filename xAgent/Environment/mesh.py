@@ -69,8 +69,6 @@ def build_mesh(pd: PreparedDomain):
   gmsh.finalize()
   return mesh
 
-
-
 def _apply_distance_field(label_to_lines, h, h_max = None, h_min = None, d_max = None):
   d_max = 20 * h if d_max is None else d_max
   h_min = 1/3 * h if h_min is None else h_min

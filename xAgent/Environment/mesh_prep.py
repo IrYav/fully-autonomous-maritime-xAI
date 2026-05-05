@@ -1,3 +1,5 @@
+from xAgent.Auxilaries.shapely_aux import debug_geometry, flatten_polygon
+
 import math
 import numpy as np
 
@@ -311,85 +313,17 @@ def label_domain(domain: Polygon, islands: list[Polygon], end_poly: Polygon, tol
 
   return rings
 
-def _assert_on_boundary(segments, domain, tol=1e-6):
-  '''
-    Raises an error, iff segments are too far away from domain boundary.
-  '''
-  B = domain.exterior
-  for i, seg in enumerate(segments):
-    d = seg.curve.distance(B)
-    if d > tol:
-      raise ValueError(
-        f"Segment {i} not on boundary (distance={d:.3e})"
-      )
-
-def _assert_cover(segments, domain, tol=1e-6):
-  '''
-    Raises an error, iff boundary has sections not covered by the segments.
-  '''
-  union = unary_union([s.curve for s in segments])
-  diff = union.symmetric_difference(domain.exterior).length
-
-  if diff >= tol:
-    raise ValueError(
-      f"Boundary not fully covered (gap length={diff:.3e})"
-    )
-
-def _assert_no_overlap(segments, tol=1e-9):
-  '''
-    Raises an error, iff intersections of two segments are longer than `tol`.
-  '''
-  for i, a in enumerate(segments):
-    for j, b in enumerate(segments):
-      if i >= j:
-        continue
-
-      inter = a.curve.intersection(b.curve)
-
-      if inter.length > tol:
-        raise ValueError(
-          f"Segments {i} and {j} overlap (length={inter.length:.3e})"
-        )
-
-def _points_equal(p, q, tol):
-  return np.linalg.norm(np.array(p) - np.array(q)) < tol
-
 def _flatten_domain(domain):
   '''
     Flattens domain, iff domain is a (Multi-)Polygon. Raises an error if domain otherwise.
   '''
-  if isinstance(domain, Polygon):
-    return domain
+  result = flatten_polygon(domain)
 
-  elif isinstance(domain, MultiPolygon):
-    # Multiple seperated Polygons, we pick the largest area.
-    return max(domain.geoms, key=lambda p: p.area)
-
+  if result is []:
+    debug_geometry(domain, "Domain:")
+    raise RuntimeError("Failed to flatten domain (Empty or wrong geom).")
   else:
-    raise RuntimeError(
-      f"Domain construction failed.\n"
-      f"Type: {type(domain)}\n"
-      f"Valid: {getattr(domain, 'is_valid', 'n/a')}\n"
-      f"Area: {getattr(domain, 'area', 'n/a')}"
-    )
+    # (Possibly) multiple seperated Polygons, we pick the largest area.
+    return max(result, key=lambda p: p.area)
 
-def _flatten_lines(geom):
-  '''
-    Given a (Multi)LineString, turns them into a list of LineStrings.
-  '''
-  if geom.is_empty:
-    return []
-  if geom.geom_type == "LineString":
-    return [geom]
-  if geom.geom_type == "MultiLineString":
-    return list(geom.geoms)
-  return []
-
-def _debug_geometry(g: BaseGeometry):
-  print(
-    f"Debugged Geometry:\n"
-    f"Type: {type(g)}\n"
-    f"Valid: {getattr(g, 'is_valid', 'n/a')}\n"
-    f"Area: {getattr(g, 'area', 'n/a')}"
-  )
 
