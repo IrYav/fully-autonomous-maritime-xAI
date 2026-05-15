@@ -1,25 +1,26 @@
 from xAgent.Environment.environment import Environment
 from xAgent.Auxilaries.shapely_aux import flatten_polygons
 
-import math
 import numpy as np
-from shapely.geometry import Point, Polygon, LineString
+from shapely.geometry import Polygon, LineString
 from dataclasses import dataclass
 
+@dataclass
 class ShipState:
   position: np.ndarray  # (2,)
   heading: float
   velocity: float
 
+@dataclass
 class ShipParams:
-  turning_radius: float
-  min_accel: float
-  max_accel: float
-  max_rudder: float
-  length: float
-  width: float
-  tau: float # Time constant, 1 
+  max_curvature: float         # 1 / m, positive
+  max_velocity: float          # m / s, positive
+  max_reverse_velocity: float  # m / s, positive
+  length: float                # m, positive
+  width: float                 # m, positive
+  tau: float                   # s, positive
 
+@dataclass
 class Ship:
   state: ShipState 
   params: ShipParams 
@@ -39,7 +40,7 @@ class Trajectory:
 @dataclass
 class StepResult:
   state: ShipState
-  collisions: list
+  collisions: list[str]
 
 def simulate_step(ship: Ship, action: Action, env: Environment, dt: float) -> StepResult:
   traj = compute_trajectory(ship.state, action, ship.params, dt)
@@ -58,53 +59,11 @@ def get_ship_polygon(ship: Ship) -> Polygon:
 
   return LineString([p1, p2]).buffer(W / 2)
   
-def check_for_collision(ship: Ship, env: Environment, trajectory: Trajectory) -> list[str]:
+def check_for_collision(ship_path: Polygon, env: Environment) -> list[str]:
   '''
     Approximates the steps path, by using a circle arc, with length/2 straight ends.
-    Order of results (if existing): Boundary, then islands (as ordered in `env`) and then end.
+    Order of results (if existing): `boundary`, then `island_i` (e.g, `island_5`) (as ordered in `env`) and then `end`.
   '''
-  def get_path(state: ShipState, traj: Trajectory, params: ShipParams, n_samples: int = 20) -> Polygon:
-    '''
-      Returns a polygon approximating the union over all ship positions along a given trajectory.
-    '''
-    pos0 = state.position
-    th0 = state.heading
-    L, W = params.length, params.width
-
-    # --- Middle Part ---
-    if abs(traj.kappa) < 1e-8:
-      # Straight Line
-      pts = [pos0, pos0 + traj.s * rot_vect(th0)]
-    else:
-      # Circle Arch
-      kappa = traj.kappa
-      R = 1.0 / abs(kappa)
-
-      h0 = rot_vect(th0)
-      n0 = np.array([-h0[1], h0[0]])
-      center = pos0 + (1.0 / kappa) * n0
-
-      rel0 = pos0 - center
-      a0 = np.arctan2(rel0[1], rel0[0])
-      angles = np.linspace(a0, a0 + traj.dtheta, n_samples)
-
-      pts = [center + R * np.array([np.cos(a), np.sin(a)]) for a in angles]
-
-    arc = LineString(pts)
-
-    # --- Start and End Segments ---
-    h0 = rot_vect(th0)
-    start_seg = LineString([pos0 - 0.5 * L * h0, pos0 + 0.5 * L * h0])
-
-    end_state = apply_trajectory(state, traj)
-    pos1, th1 = end_state.position, end_state.heading
-    h1 = rot_vect(th1)
-    end_seg = LineString([pos1 - 0.5 * L * h1, pos1 + 0.5 * L * h1])
-
-    skeleton = arc.union(start_seg).union(end_seg)
-    return skeleton.buffer(W / 2)
-  
-  ship_path = get_path(ship.state, trajectory, ship.params)
   result = []
 
   #Checks for Outside the boundary 
@@ -125,13 +84,16 @@ def check_for_collision(ship: Ship, env: Environment, trajectory: Trajectory) ->
 def compute_trajectory(state: ShipState, action: Action, params: ShipParams, dt: float) -> Trajectory:
   u = state.velocity
 
-  # --- Action clampen ---
-  delta = np.clip(action.rudder, -1.0, 1.0) * params.max_rudder
+  # --- Clamping actions ---
+  r_cmd = np.clip(action.rudder, -1.0, 1.0)
   a_cmd = np.clip(action.acceleration, -1.0, 1.0)
 
-  # --- Zielgeschwindigkeit ---
-  u_target = max(0.0, a_cmd * params.max_accel)
-
+  # --- Target Velocity ---
+  if a_cmd >= 0: 
+    u_target = a_cmd * params.max_velocity 
+  else:
+    u_target = a_cmd * params.max_reverse_velocity
+    
   # --- Relaxationsmodell ---
   tau = params.tau
   k = 1.0 / tau
@@ -139,17 +101,13 @@ def compute_trajectory(state: ShipState, action: Action, params: ShipParams, dt:
   # neue Geschwindigkeit (exakt)
   u_new = u_target + (u - u_target) * np.exp(-k * dt)
 
-  # integrierte Strecke
+  # Integrated distance travelled
   s = (
     u_target * dt +
     (u - u_target) * (1.0 - np.exp(-k * dt)) / k
   )
 
-  # Krümmung
-  if abs(delta) < 1e-8:
-    kappa = 0.0
-  else:
-    kappa = delta / params.turning_radius
+  kappa = r_cmd * params.max_curvature
 
   # Winkeländerung
   dtheta = kappa * s
@@ -188,6 +146,61 @@ def apply_trajectory(state: ShipState, traj: Trajectory) -> ShipState:
     theta_new = theta + dtheta
 
   return ShipState(position=pos_new, heading=theta_new, velocity=traj.velocity_new)
+
+def get_start_state(env: Environment, start_vel = 0) -> ShipState:
+  pos = env.start
+  end = np.array(env.end_poly.centroid.coords[0])
+  d = end - pos
+  heading = np.arctan2(d[1], d[0])
+
+  return ShipState(pos, heading, start_vel)
+
+def get_path(state: ShipState, traj: Trajectory, params: ShipParams, n_samples: int = 20) -> Polygon:
+  '''
+    Returns a polygon approximating the union over all ship positions along a given trajectory.
+    Rather than a proper union of all areas over each (positions, heading), 
+    this approach uses a buffered skeleton (circle arch + straight line segments for start and end) 
+  '''
+  pos0 = state.position
+  th0 = state.heading
+  L, W = params.length, params.width
+
+  # Edge Case: Ship doesn't move.
+  if abs(traj.s) < 1e-8:
+    return get_ship_polygon(Ship(state, params))
+  # --- Middle Part ---
+  if abs(traj.kappa) < 1e-8:
+    # Straight Line
+    pts = [pos0, pos0 + traj.s * rot_vect(th0)]
+  else:
+    # Circle Arch
+    kappa = traj.kappa
+    R = 1.0 / abs(kappa)
+
+    h0 = rot_vect(th0)
+    n0 = np.array([-h0[1], h0[0]])
+    center = pos0 + (1.0 / kappa) * n0
+
+    rel0 = pos0 - center
+    a0 = np.arctan2(rel0[1], rel0[0])
+    angles = np.linspace(a0, a0 + traj.dtheta, n_samples)
+
+    pts = [center + R * np.array([np.cos(a), np.sin(a)]) for a in angles]
+
+  arc = LineString(pts)
+
+  # --- Start and End Segments ---
+  h0 = rot_vect(th0)
+  start_seg = LineString([pos0 - 0.5 * L * h0, pos0 + 0.5 * L * h0])
+
+  end_state = apply_trajectory(state, traj)
+  pos1, th1 = end_state.position, end_state.heading
+  h1 = rot_vect(th1)
+  end_seg = LineString([pos1 - 0.5 * L * h1, pos1 + 0.5 * L * h1])
+
+  skeleton = arc.union(start_seg).union(end_seg)
+  return skeleton.buffer(W / 2)
+  
 
 def rot_vect(theta:float):
   return np.array([np.cos(theta), np.sin(theta)])

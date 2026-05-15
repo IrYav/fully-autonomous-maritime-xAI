@@ -54,7 +54,6 @@ class HarmonicField:
     interp = basis.interpolate(self.u)
     self.grad = interp.grad[:, :, 0]
 
-  #TODO Own dataclass for BC's
   @staticmethod
   def get_boundary_conditions(mesh: Mesh):
     bc = []

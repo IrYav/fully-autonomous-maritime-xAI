@@ -2,20 +2,23 @@ import numpy as np
 import matplotlib.tri as mtri
 from matplotlib.figure import Figure
 
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QWidget, QVBoxLayout, QPushButton
+from PySide6.QtWidgets import QApplication, QCheckBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QWidget, QVBoxLayout, QPushButton
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as Canvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT
 from shapely.plotting import plot_polygon, plot_line
 
 
+
+from xAgent.Auxilaries.auxiliaries import SimulationState
+from xAgent.Environment.agent import Action, get_ship_polygon
+
+
 class EnvironmentViewer(QWidget):
-  def __init__(self, boundary):
+  def __init__(self):
     super().__init__()
 
     # State
-    self.env = None
-    self.mesh = None
-    self.harfield = None
+    self.sim_state : SimulationState = None
 
     # Artists
     self.artists = {
@@ -24,7 +27,9 @@ class EnvironmentViewer(QWidget):
       "mesh": None,
       "potential_contour": None,
       "potential_fill": None,
-      "gradient": None
+      "gradient": None,
+      "ship" : None,
+      "trajectory" : None
     }
 
     # Matplotlib Figure
@@ -34,53 +39,125 @@ class EnvironmentViewer(QWidget):
 
     self.toolbar = NavigationToolbar2QT(self.canvas, self)
 
-    layout = QVBoxLayout()
-    layout.addWidget(self.toolbar)
-    layout.addWidget(self.canvas)
+    # Layout Areas
+    self.button_layout = QHBoxLayout()
 
-    # eigener Bereich für Buttons
-    self.button_layout = QHBoxLayout()  # oder QVBoxLayout
-    layout.addLayout(self.button_layout)
+    self.sidebar_layout = QVBoxLayout()
 
-    self.fig.canvas.mpl_connect('button_press_event', self.on_click)
-    self.setLayout(layout)
+    viewer_layout = QHBoxLayout()
+    viewer_layout.addLayout(self.sidebar_layout,0)
+    viewer_layout.addWidget(self.canvas,1)
+
+    main_layout = QVBoxLayout()
+    main_layout.addWidget(self.toolbar)
+    main_layout.addLayout(viewer_layout)
+    main_layout.addLayout(self.button_layout)
+
+
+    self._setup_visibility_controls(self.sidebar_layout)
+    self._setup_inputs(self.sidebar_layout)
+    # Push checkboxes up.
+    self.sidebar_layout.addStretch()
+
+    self.setLayout(main_layout)
+  
+  # ---------- Init Helpers --------
+  # General Structure, create widget, add it to layout.
+  def _setup_inputs(self, layout):
+    form = QFormLayout()
+
+    self.rudder_input = QDoubleSpinBox()
+    self.rudder_input.setRange(-1.0, 1.0)
+    self.rudder_input.setSingleStep(0.1)
+    self.rudder_input.setValue(0.0)
+
+    self.accel_input = QDoubleSpinBox()
+    self.accel_input.setRange(-1.0, 1.0)
+    self.accel_input.setSingleStep(0.1)
+    self.accel_input.setValue(0.0)
+
+    self.dt_input = QDoubleSpinBox()
+    self.dt_input.setRange(0.01, 100.0)
+    self.dt_input.setSingleStep(0.1)
+    self.dt_input.setValue(1.0)
+
+    form.addRow("Rudder", self.rudder_input)
+    form.addRow("Acceleration", self.accel_input)
+    form.addRow("dt", self.dt_input)
+
+    container = QWidget()
+    container.setLayout(form)
+
+    layout.addWidget(container)
+  
+  def _setup_visibility_controls(self, layout):
+    self.visibility_boxes = {}
+
+    for name in self.artists.keys():
+      box = QCheckBox(name)
+      box.setChecked(True)
+
+      box.stateChanged.connect(
+        lambda _, n=name: self.toggle_artist(n)
+      )
+
+      layout.addWidget(box)
+      self.visibility_boxes[name] = box
   # ---------- Public API ----------
-  def set_state(self, env, mesh, harmonic_field):
-    self.env = env
-    self.mesh = mesh
-    self.harfield = harmonic_field
+  def set_sim_state(self, sim_state : SimulationState):
+    self.sim_state = sim_state
     self._render()
 
-  def add_button(self, label, callback):
+  def add_main_button(self, label, callback):
     btn = QPushButton(label)
-    btn.clicked.connect(lambda *_: callback(self))
+    btn.clicked.connect(lambda *_: callback())
     self.button_layout.addWidget(btn)
     return btn
 
+  def add_sidebar_button(self, label, callback):
+    btn = QPushButton(label)
+    btn.clicked.connect(lambda *_: callback())
+    self.sidebar_layout.addWidget(btn)
+    return btn
+  
+  def get_sim_input(self):
+    return (
+      Action(
+        self.rudder_input.value(), 
+        self.accel_input.value()), 
+      self.dt_input.value())
+  
+  def update_step(self, ship_path):
+    self._draw_ship()
+    self._draw_trajectory(ship_path)
+    self.canvas.draw()
+
   # ---------- Rendering ----------
   def _render(self):
-    if self.env is None or self.mesh is None:
+    if self.sim_state.env is None or self.sim_state.mesh is None:
       return
 
     self._draw_environment()
     self._draw_mesh()
     self._draw_potential()
-    
+    self._draw_ship()
     self.canvas.draw()
 
   def _draw_environment(self):
+    env = self.sim_state.env
+
     self._remove_artist("corridor")
     self._remove_artist("islands")
 
     self.artists["corridor"] = plot_polygon(
-      self.env.corridor,
+      env.corridor,
       ax=self.ax,
       color="lightgray",
       add_points=False
     )
 
     self.artists["islands"] = plot_polygon(
-      self.env.islands,
+      env.islands,
       ax=self.ax,
       color="lightgreen",
       add_points=False
@@ -91,10 +168,11 @@ class EnvironmentViewer(QWidget):
     self.ax.set_ylabel("Distance (100 m)")
 
   def _draw_mesh(self):
+    mesh = self.sim_state.mesh
     self._remove_artist("mesh")
 
-    points = self.mesh.points[:, :2]
-    triangles = self.mesh.cells_dict["triangle"]
+    points = mesh.points[:, :2]
+    triangles = mesh.cells_dict["triangle"]
 
     triang = mtri.Triangulation(
       points[:, 0],
@@ -106,13 +184,15 @@ class EnvironmentViewer(QWidget):
    
   def _draw_potential(self, stride=5):
 
-    tri = self.harfield.tri
-    phi = self.harfield.u
+    field = self.sim_state.field
+
+    tri = field.tri
+    phi = field.u
     # print(np.finfo(phi.dtype).bits)
     # eps = 1e-12
     # delta = np.clip(1 - phi, eps, 1.0)
     # phi = -np.log10(delta)
-    grad = self.harfield.grad
+    grad = field.grad
 
     self._remove_artist("potential_contour")
     self._remove_artist("potential_fill")
@@ -163,6 +243,29 @@ class EnvironmentViewer(QWidget):
     quiv = self.ax.quiver(cx, cy, dx, dy, scale=30)
     self.artists["gradient"] = quiv
 
+  def _draw_ship(self):
+    ship_poly = get_ship_polygon(self.sim_state.ship)
+
+    self._remove_artist("ship")
+
+    self.artists["ship"] = plot_polygon(
+      ship_poly,
+      ax=self.ax,
+      color="steelblue",
+      add_points=False
+    )
+
+  def _draw_trajectory(self, path_poly):
+    self._remove_artist("trajectory")
+
+    self.artists["trajectory"] = plot_polygon(
+      path_poly,
+      ax=self.ax,
+      color="steelblue",
+      alpha=0.3,
+      add_points=False
+    )
+
   # ---------- Utilities ----------
   def _remove_artist(self, name):
     artist = self.artists.get(name)
@@ -182,15 +285,40 @@ class EnvironmentViewer(QWidget):
 
     self.artists[name] = None
 
+  def toggle_artist(self, name):
+    artist = self.artists.get(name)
+
+    if artist is None:
+      return
+
+    visible = self.visibility_boxes[name].isChecked()
+
+    # ContourSet
+    if hasattr(artist, "collections"):
+      for coll in artist.collections:
+        coll.set_visible(visible)
+
+    # Listen von Artists
+    elif isinstance(artist, list):
+      for a in artist:
+        a.set_visible(visible)
+
+    # Einzelartist
+    else:
+      artist.set_visible(visible)
+
+    self.canvas.draw_idle()
+
   def inspect_triangle(self, pos):
-    tri_id = self.harfield.finder(*pos)
+    field = self.sim_state.field
+    tri_id = field.finder(*pos)
     if tri_id == -1:
       print("Outside mesh")
       return
 
-    tri = self.harfield.mesh.t[:, tri_id]     # 3 node indices
-    coords = self.harfield.mesh.p[:, tri]     # (2,3)
-    values = self.harfield.u[tri]
+    tri = field.mesh.t[:, tri_id]     # 3 node indices
+    coords = field.mesh.p[:, tri]     # (2,3)
+    values = field.u[tri]
 
     print(f"Triangle ID: {tri_id}")
     print("Nodes:", tri)
@@ -206,7 +334,7 @@ class EnvironmentViewer(QWidget):
     print("Value differences:", diffs)
 
     # Gradient
-    grad = self.harfield.grad[:, tri_id]
+    grad = field.grad[:, tri_id]
     norm = np.linalg.norm(grad)
 
     print("Gradient:", grad)
@@ -230,7 +358,7 @@ class EnvironmentViewer(QWidget):
 
     for i, j in edges:
       key = frozenset((int(i), int(j)))
-      label = self.harfield.edge_labels.get(key, None)
+      label = field.edge_labels.get(key, None)
 
       #Doesn't belong to border part of the domain.
       if label is None:
@@ -245,9 +373,10 @@ class EnvironmentViewer(QWidget):
     if event.xdata is None or event.ydata is None:
       return
 
+    field = self.sim_state.field
     pos = np.array([event.xdata, event.ydata])
 
-    tri_id = self.harfield.finder(*pos)
+    tri_id = field.finder(*pos)
     if tri_id == -1:
       print("Outside mesh")
       return
@@ -256,8 +385,8 @@ class EnvironmentViewer(QWidget):
     self.inspect_triangle(pos)
 
     # optional: visuelles Highlight
-    tri_nodes = self.harfield.mesh.t[:, tri_id]
-    coords = self.harfield.mesh.p[:, tri_nodes]
+    tri_nodes = field.mesh.t[:, tri_id]
+    coords = field.mesh.p[:, tri_nodes]
 
     self.ax.scatter(coords[0], coords[1], color='red')
     self.fig.canvas.draw()

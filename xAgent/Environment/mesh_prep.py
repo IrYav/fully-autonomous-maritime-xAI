@@ -1,4 +1,4 @@
-from xAgent.Auxilaries.shapely_aux import debug_geometry, flatten_polygon
+from xAgent.Auxilaries.shapely_aux import debug_geometry, flatten_polygons
 
 import math
 import numpy as np
@@ -317,7 +317,7 @@ def _flatten_domain(domain):
   '''
     Flattens domain, iff domain is a (Multi-)Polygon. Raises an error if domain otherwise.
   '''
-  result = flatten_polygon(domain)
+  result = flatten_polygons(domain)
 
   if result is []:
     debug_geometry(domain, "Domain:")
