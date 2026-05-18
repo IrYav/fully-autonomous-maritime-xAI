@@ -26,7 +26,7 @@ class PreparedDomain():
     self.h = h
     self.eps = eps
 
-def prepare_domain(islands: MultiPolygon, end_poly: Polygon, boundary, h=5.0, eps=0.5) -> PreparedDomain:
+def prepare_domain(islands: MultiPolygon, end_poly: Polygon, boundary, h=5.0, eps=None) -> PreparedDomain:
   """
     Prep mesh TODO
     Args:
@@ -39,14 +39,18 @@ def prepare_domain(islands: MultiPolygon, end_poly: Polygon, boundary, h=5.0, ep
       [xmax, ymax]]
     end: Target Point, will become a small polygon.
     h: float, optional
-      Target mesh size.
+      Target mesh size. Meshing time scales `1/h²` (`1/2` mesh sizes needs `4*` triangles)
     eps: float, optional
       Tolerance used to simplify the geometry. The resulting geometry may
       deviate from the original by up to `eps` in Hausdorff distance.
 
-      Suggested default: 0.1 * h
+      Used default: 0.1 * h
     Returns:
   """
+
+  if eps is None:
+    eps = 0.1 * h
+
   xmin, ymin = boundary[0]
   xmax, ymax = boundary[1]
     

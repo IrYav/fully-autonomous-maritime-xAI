@@ -148,6 +148,9 @@ def apply_trajectory(state: ShipState, traj: Trajectory) -> ShipState:
   return ShipState(position=pos_new, heading=theta_new, velocity=traj.velocity_new)
 
 def get_start_state(env: Environment, start_vel = 0) -> ShipState:
+  '''
+    Get the starting position, heading from env and create the according `ShipState` instance
+  '''
   pos = env.start
   end = np.array(env.end_poly.centroid.coords[0])
   d = end - pos
