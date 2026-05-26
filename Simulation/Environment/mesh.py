@@ -1,4 +1,4 @@
-from xAgent.Environment.mesh_prep import PreparedDomain, LabeledRing
+from Simulation.Environment.mesh_prep import PreparedDomain, LabeledRing
 
 import gmsh
 import meshio

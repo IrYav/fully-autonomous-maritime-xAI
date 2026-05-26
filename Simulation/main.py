@@ -2,8 +2,8 @@
 import numpy as np
 
 #Internal
-from xAgent.Auxilaries.ship_instances import ferry
-from xAgent.Controller.controller import InteractiveController, SimulationConfig
+from Simulation.Auxilaries.ship_instances import ferry
+from Simulation.Controller.controller import InteractiveController, SimulationConfig
 
 config = SimulationConfig(
   boundary = np.array([[-2500, -2500], [2500, 2500]], dtype=float),
@@ -14,6 +14,6 @@ def main():
   # Initialize
   app = InteractiveController(config)
   app.run()
-  return 
+  return
 
 main()

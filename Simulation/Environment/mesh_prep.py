@@ -1,4 +1,4 @@
-from xAgent.Auxilaries.shapely_aux import debug_geometry, flatten_polygons
+from Simulation.Auxilaries.shapely_aux import debug_geometry, flatten_polygons
 
 import math
 import numpy as np

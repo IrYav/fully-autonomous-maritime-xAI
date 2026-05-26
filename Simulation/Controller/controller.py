@@ -4,13 +4,13 @@ import sys
 from PySide6.QtWidgets import QApplication
 import numpy as np
 
-from xAgent.Environment.harmonic import HarmonicField
-from xAgent.Visualization.vis_environment import EnvironmentViewer
-from xAgent.Auxilaries.auxiliaries import SimulationState
-import xAgent.Environment.environment as envi
-import xAgent.Environment.mesh_prep as mesher_prep
-import xAgent.Environment.mesh as mesher
-import xAgent.Environment.agent as agent
+from Simulation.Environment.harmonic import HarmonicField
+from Simulation.Visualization.vis_environment import EnvironmentViewer
+from Simulation.Auxilaries.auxiliaries import SimulationState
+import Simulation.Environment.environment as envi
+import Simulation.Environment.mesh_prep as mesher_prep
+import Simulation.Environment.mesh as mesher
+import Simulation.Environment.agent as agent
 
 @dataclass
 class SimulationConfig:

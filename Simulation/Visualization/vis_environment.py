@@ -9,8 +9,8 @@ from shapely.plotting import plot_polygon, plot_line
 
 
 
-from xAgent.Auxilaries.auxiliaries import SimulationState
-from xAgent.Environment.agent import Action, get_ship_polygon
+from Simulation.Auxilaries.auxiliaries import SimulationState
+from Simulation.Environment.agent import Action, get_ship_polygon
 
 
 class EnvironmentViewer(QWidget):

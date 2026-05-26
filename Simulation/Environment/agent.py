@@ -1,5 +1,5 @@
-from xAgent.Environment.environment import Environment
-from xAgent.Auxilaries.shapely_aux import flatten_polygons
+from Simulation.Environment.environment import Environment
+from Simulation.Auxilaries.shapely_aux import flatten_polygons
 
 import numpy as np
 from shapely.geometry import Polygon, LineString
@@ -8,8 +8,8 @@ from dataclasses import dataclass
 @dataclass
 class ShipState:
   position: np.ndarray  # (2,)
-  heading: float
-  velocity: float
+  heading: float # Radian
+  velocity: float # m/s
 
 @dataclass
 class ShipParams:

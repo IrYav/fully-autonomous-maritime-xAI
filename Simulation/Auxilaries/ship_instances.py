@@ -1,4 +1,4 @@
-from xAgent.Environment.agent import ShipParams
+from Simulation.Environment.agent import ShipParams
 
 #Values should merely be plausible, model is heavily approximated anyways.
 def dinghy() -> ShipParams:
