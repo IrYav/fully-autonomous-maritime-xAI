@@ -11,7 +11,7 @@ from Simulation.Environment.agent import Ship, ShipState, get_ship_polygon
 from Simulation.Environment.environment import Environment
 
 
-def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution):
+def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution: np.ndarray):
   '''
     Get a geometrical size[0] * size[1] (x,y) cutout centered around the ship, 
     rasterized to the graphical target resolution[0] * resolution[1] (rows, cols)
@@ -25,6 +25,7 @@ def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution):
   pos = ship.state.position
   heading = ship.state.heading #Radian
   p1, p2 = pos - size/2, pos + size/2
+  pos = shapely.Point(pos)
   rows, cols = resolution
 
   #Get a box centered on ship
@@ -34,7 +35,7 @@ def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution):
   window = rotate(window, heading, pos, True)
 
   #Extract local views
-  obstacles = window.intersection(env.boundary.union(env.islands))
+  obstacles = window.intersection(env.islands).union(window.difference(env.boundary))
   end_poly = window.intersection(env.end_poly)
   ship_poly = get_ship_polygon(ship)
 
@@ -52,8 +53,8 @@ def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution):
   #Prepare for rasterization, still using mathematical references.
   source_box = (p1,p2)
   target_box = np.array([
-      [0, 0],
-      [cols - 1, rows - 1],
+      [-0.5, -0.5],
+      [cols - 0.5, rows - 0.5],
   ])
   obstacles = map_box_coordinates(obstacles, source_box, target_box)
   end_poly  = map_box_coordinates(end_poly , source_box, target_box)

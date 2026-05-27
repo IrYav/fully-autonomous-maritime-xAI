@@ -111,7 +111,7 @@ def compute_trajectory(state: ShipState, action: Action, params: ShipParams, dt:
 
   # Winkeländerung
   dtheta = kappa * s
-
+  print(f"Rotated by {dtheta}")
   return Trajectory(s=s, kappa=kappa, dtheta=dtheta, velocity_new=u_new)
 
 def apply_trajectory(state: ShipState, traj: Trajectory) -> ShipState:

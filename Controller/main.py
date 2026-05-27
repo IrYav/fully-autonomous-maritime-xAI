@@ -3,11 +3,13 @@ import numpy as np
 
 #Internal
 from Simulation.Auxilaries.ship_instances import ferry
-from Simulation.Controller.controller import InteractiveController, SimulationConfig
+from Controller.controller import InteractiveController, SimulationConfig
 
 config = SimulationConfig(
   boundary = np.array([[-2500, -2500], [2500, 2500]], dtype=float),
-  ship_params = ferry()
+  ship_params = ferry(),
+  lview_size = np.array([250,250]),
+  lview_res = np.array([32,32])
   )
 
 def main():

@@ -2,7 +2,14 @@ import numpy as np
 import matplotlib.tri as mtri
 from matplotlib.figure import Figure
 
-from PySide6.QtWidgets import QApplication, QCheckBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QWidget, QVBoxLayout, QPushButton
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+  QApplication, QCheckBox, QDoubleSpinBox, QFormLayout,
+  QHBoxLayout, QLabel, QWidget, QVBoxLayout, QPushButton,
+  QSizePolicy, QSlider
+  )
+from PySide6.QtGui import QImage, QPixmap
+
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as Canvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT
 from shapely.plotting import plot_polygon, plot_line
@@ -41,12 +48,14 @@ class EnvironmentViewer(QWidget):
 
     # Layout Areas
     self.button_layout = QHBoxLayout()
-
+  
     self.sidebar_layout = QVBoxLayout()
+    self.local_view_layout = QVBoxLayout()
 
     viewer_layout = QHBoxLayout()
     viewer_layout.addLayout(self.sidebar_layout,0)
-    viewer_layout.addWidget(self.canvas,1)
+    viewer_layout.addWidget(self.canvas,3)
+    viewer_layout.addLayout(self.local_view_layout,1)
 
     main_layout = QVBoxLayout()
     main_layout.addWidget(self.toolbar)
@@ -56,6 +65,7 @@ class EnvironmentViewer(QWidget):
 
     self._setup_visibility_controls(self.sidebar_layout)
     self._setup_inputs(self.sidebar_layout)
+    self._setup_lviews(self.local_view_layout)
     # Push checkboxes up.
     self.sidebar_layout.addStretch()
 
@@ -66,15 +76,28 @@ class EnvironmentViewer(QWidget):
   def _setup_inputs(self, layout):
     form = QFormLayout()
 
-    self.rudder_input = QDoubleSpinBox()
-    self.rudder_input.setRange(-1.0, 1.0)
-    self.rudder_input.setSingleStep(0.1)
-    self.rudder_input.setValue(0.0)
+    self.rudder_input = QSlider(Qt.Orientation.Horizontal)
+    self.rudder_input.setRange(-100, 100)
+    self.rudder_input.setValue(0)
+    self.rudder_input.setTickPosition(QSlider.TickPosition.TicksBelow)
+    self.rudder_input.setTickInterval(25)
+    #Slider right means front is pushed to the right.
+    self.rudder_input.setInvertedAppearance(True)
 
-    self.accel_input = QDoubleSpinBox()
-    self.accel_input.setRange(-1.0, 1.0)
-    self.accel_input.setSingleStep(0.1)
-    self.accel_input.setValue(0.0)
+    self.accel_input = QSlider(Qt.Orientation.Horizontal)
+    self.accel_input.setRange(-100, 100)
+    self.accel_input.setValue(0)
+    self.accel_input.setTickPosition(QSlider.TickPosition.TicksBelow)
+    self.accel_input.setTickInterval(25)
+
+    self.rudder_value = QLabel("0.00")
+    self.rudder_input.valueChanged.connect(
+        lambda v: self.rudder_value.setText(f"{v/100:.2f}")
+    )    
+    self.accel_value = QLabel("0.00")
+    self.accel_input.valueChanged.connect(
+        lambda v: self.accel_value.setText(f"{v/100:.2f}")
+    )
 
     self.dt_input = QDoubleSpinBox()
     self.dt_input.setRange(0.01, 100.0)
@@ -82,7 +105,9 @@ class EnvironmentViewer(QWidget):
     self.dt_input.setValue(1.0)
 
     form.addRow("Rudder", self.rudder_input)
+    form.addRow("Rudder Value", self.rudder_value)
     form.addRow("Acceleration", self.accel_input)
+    form.addRow("Acceleration Value", self.accel_value)
     form.addRow("dt", self.dt_input)
 
     container = QWidget()
@@ -103,10 +128,87 @@ class EnvironmentViewer(QWidget):
 
       layout.addWidget(box)
       self.visibility_boxes[name] = box
+  
+  def _setup_lviews(self, layout):
+    self.local_view_layout = QVBoxLayout()
+
+    self.obs_title = QLabel("Obstacles")
+    self.end_title = QLabel("Goal")
+    self.ship_title = QLabel("Ship")
+    self.obs_label = QLabel()
+    self.end_label = QLabel()
+    self.ship_label = QLabel()
+
+    self.obs_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    self.end_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    self.ship_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    self.obs_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    self.end_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    self.ship_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    self.obs_label.setSizePolicy(
+      QSizePolicy.Policy.Expanding,
+      QSizePolicy.Policy.Expanding,
+    )
+    self.end_label.setSizePolicy(
+      QSizePolicy.Policy.Expanding,
+      QSizePolicy.Policy.Expanding,
+    )
+    self.ship_label.setSizePolicy(
+      QSizePolicy.Policy.Expanding,
+      QSizePolicy.Policy.Expanding,
+    )
+
+    self.local_view_layout.addStretch(1)
+
+    self.local_view_layout.addWidget(self.obs_label,1)
+    self.local_view_layout.addWidget(self.obs_title)
+    self.local_view_layout.addWidget(self.end_label,1)
+    self.local_view_layout.addWidget(self.end_title)
+    self.local_view_layout.addWidget(self.ship_label,1)
+    self.local_view_layout.addWidget(self.ship_title)
+
+    self.local_view_layout.addStretch(1)
+
+    layout.addLayout(self.local_view_layout)
+
+
   # ---------- Public API ----------
   def set_sim_state(self, sim_state : SimulationState):
     self.sim_state = sim_state
     self._render()
+
+  def set_lviews(self, obs: np.ndarray):
+    '''
+    obs:
+      Boolean tensor of shape (3, rows, cols)
+    '''
+    labels = [
+      self.obs_label,
+      self.end_label,
+      self.ship_label,
+    ]
+    for label, mask in zip(labels, obs):
+      mask = mask.astype(np.uint8) * 255
+
+      rows, cols = mask.shape
+
+      qimg = QImage(
+        mask.data,
+        cols,
+        rows,
+        cols,
+        QImage.Format.Format_Grayscale8,
+      )
+
+      pix = QPixmap.fromImage(qimg)
+
+      pix = pix.scaled(
+        label.size(),
+        Qt.AspectRatioMode.KeepAspectRatio,
+      )
+
+      label.setPixmap(pix)
 
   def add_main_button(self, label, callback):
     btn = QPushButton(label)
@@ -123,8 +225,8 @@ class EnvironmentViewer(QWidget):
   def get_sim_input(self):
     return (
       Action(
-        self.rudder_input.value(), 
-        self.accel_input.value()), 
+        self.rudder_input.value() / 100, 
+        self.accel_input.value() / 100), 
       self.dt_input.value())
   
   def update_step(self, ship_path):
