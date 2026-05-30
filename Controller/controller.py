@@ -34,7 +34,6 @@ class SimulationConfig:
 class BaseController:
   def __init__(self, config):
     self.config = config
-    self.app = QApplication(sys.argv)
     self.sim_state = None
     self.lview = None
 
@@ -69,6 +68,7 @@ class BaseController:
 class InteractiveController(BaseController):
   def __init__(self, config):
     super().__init__(config)
+    self.app = QApplication(sys.argv)
     self.viewer = EnvironmentViewer()
     self._setup_buttons()
     self.new_training_instance()
