@@ -1,7 +1,5 @@
-#External
 import numpy as np
 
-#Internal
 from Simulation.Auxilaries.ship_instances import ferry
 from Controller.controller import InteractiveController, SimulationConfig
 
@@ -18,4 +16,5 @@ def main():
   app.run()
   return
 
-main()
+if __name__ == "__main__":
+  main()
