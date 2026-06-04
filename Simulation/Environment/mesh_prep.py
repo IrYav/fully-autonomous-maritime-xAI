@@ -1,4 +1,4 @@
-from Simulation.Auxilaries.shapely_aux import debug_geometry, flatten_polygons
+from Simulation.Auxilaries.shapely_aux import debug_geometry, extract_geometries, flatten_polygons
 
 import math
 import numpy as np
@@ -138,31 +138,8 @@ def fix_boundary_contacts(polygon: Polygon, boundary: Polygon, l: float) -> Poly
 
     return box(x0, y0, x0 + l, y0 + l)
 
-  #Returns a list of contact points/contact lines
-  def extract_contacts(inter: BaseGeometry) -> list[BaseGeometry]:
-    if inter.is_empty:
-      return []
-
-    result = []
-    stack = [inter]
-
-    while stack:
-      g = stack.pop()
-      t = g.geom_type
-
-      if t in ("Point", "LineString"):
-        result.append(g)
-
-      elif t in ("MultiPoint", "MultiLineString", "GeometryCollection"):
-        stack.extend(g.geoms)
-
-      else:
-        raise RuntimeError(f"Unexpected type: {t}")
-
-    return result
-
   #Get contacts
-  contacts = extract_contacts(contacts)
+  contacts = extract_geometries(contacts, ["Point", "LineString"])
 
   #Retain too short contacts. Includes all points.
   contacts = [i for i in contacts if i.length < l] 

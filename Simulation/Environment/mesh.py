@@ -4,9 +4,13 @@ import gmsh
 import meshio
 from collections import defaultdict
 
-def build_mesh(pd: PreparedDomain):
+def build_mesh(pd: PreparedDomain, verbose = False):
 
   gmsh.initialize()
+
+  if not verbose:
+    gmsh.option.setNumber("General.Verbosity", 1)
+
   gmsh.model.add("mesh")
 
   point_cache = {}

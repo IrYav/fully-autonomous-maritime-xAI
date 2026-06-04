@@ -68,6 +68,7 @@ def debug_geometry(g: BaseGeometry, first_msg = "Debugged Geometry:" ):
   print(
     f"Type: {type(g)}\n"
     f"Valid: {getattr(g, 'is_valid', 'n/a')}\n"
-    f"Area: {getattr(g, 'area', 'n/a')}"
+    f"Area: {getattr(g, 'area', 'n/a')}\n"
+    f"Boundary Box: {getattr(g, 'bounds', 'n/a')}"
   )
   print(g)

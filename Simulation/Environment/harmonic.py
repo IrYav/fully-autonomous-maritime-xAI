@@ -29,9 +29,15 @@ class HarmonicField:
         A HarmonicField, satisfying the boundary conditions.
     '''
     # --- Mesh conversion ---
-    points = gmsh_mesh.points[:, :2].T
-    triangles = gmsh_mesh.cells_dict["triangle"].T
-    self.mesh = MeshTri(points, triangles)
+    points = np.ascontiguousarray(
+        gmsh_mesh.points[:, :2].T
+    )
+
+    triangles = np.ascontiguousarray(
+        gmsh_mesh.cells_dict["triangle"].T
+    )
+
+    self.mesh = MeshTri(points,triangles)
 
     # --- Boundary topology ---
     self.edge_labels = self._extract_edge_labels(gmsh_mesh)
@@ -53,7 +59,6 @@ class HarmonicField:
     # --- Gradient (P1 → constant per triangle) ---
     interp = basis.interpolate(self.u)
     self.grad = interp.grad[:, :, 0]
-
   @staticmethod
   def get_boundary_conditions(mesh: Mesh):
     bc = []

@@ -287,7 +287,9 @@ def _get_end_polygon(end: Point, radius: float):
   end = end.buffer(radius, quad_segs=4)
   return end
 
-def new_environment(boundary, num_path_points=5, num_islands=6, corridor_width=3.5, end_radius = 5) -> Environment:
+def new_environment(boundary, min_border_dist, max_curvature,
+                    num_path_points=5, num_islands=6, 
+                    corridor_width=3.5, end_radius = 5) -> Environment:
   '''
     Generate a new environment, including a free corridor and non-overlapping islands.
     The free corridor guarantees a navigable path, though simpler paths may exist.
@@ -296,28 +298,98 @@ def new_environment(boundary, num_path_points=5, num_islands=6, corridor_width=3
       num_path_points: Number of path points, more points create a more complex path.
       num_islands: Number of islands. Uses generate and validate, thus too big numbers might cause issues.
       corridor_width: Width of the corridor.
+      end_radius: Used to create an approximated circle, may have overlaps with islands, 
+        but should retain enough free space for a ship to park, 
+        iff `corridor_width` is appropriate and `end_radius` > ship's length
+      min_border_dist: Avoids generating start, end and mid-points within 
+        this distance to the boundary
+      max_curvature: Free corridor has a curvature of at most `max_curvature`.
     Returns:
       A pre-filled `Environment` object.
   '''
-  # Get n points for a path
-  points = generate_points(num_path_points, boundary)
-  # Pick them in an useful order 
-  points = projection_sort(points)
-  start, end = points[0], points[-1]
-  #Interpolate them, this is the path center
-  spline = interpolate(points)
-  #Make the path into a Polygon with sufficient width
-  corridor = get_corridor(spline, 500, corridor_width * 0.5)
+  #Inner box for points
+  point_boundary = np.array([
+    boundary[0] + min_border_dist,
+    boundary[1] - min_border_dist
+  ])
+
+  #Innerbox must still be well defined
+  if np.any(point_boundary[1] < point_boundary[0]):
+    raise ValueError("Inner box is ill-defined:\n" \
+      f"Lower left point:{boundary[0]} + {min_border_dist} = {point_boundary[0]}\n" \
+      f"Upper right point:{boundary[1]} - {min_border_dist} = {point_boundary[1]}\n" \
+      "First point has to be less than the second one, in each component."
+      )
+
+  #Repack boundary into a polygon.
+  boxboundary = box(*boundary[0], *boundary[1])
+
   #Bigger boundary so some islands can be outside.
-  islandBoundary = (boundary - boundary.mean(axis=0)) * 1.5 + boundary.mean(axis=0) 
+  islandBoundary = (boundary - boundary.mean(axis=0)) * 1.5 + boundary.mean(axis=0)
+
+  valid_corridor, tries = False, 0
+  while not valid_corridor:
+    # Get n points for a path
+    points = generate_points(num_path_points, point_boundary)
+    # Pick them in an useful order 
+    points = projection_sort(points)
+    start, end = points[0], points[-1]
+    #Interpolate them, this is the path center
+    spline = interpolate(points)
+    #Make the path into a Polygon with sufficient width
+    corridor = get_corridor(spline, 500, corridor_width * 0.5)
+
+    valid_corridor = (
+      corridor.within(boxboundary) and
+      _get_max_curvature(spline) < max_curvature
+    )
+    tries += 1
+    if tries % 1000 == 0:
+      print(f"Corridor generation took {tries} attempts!")
+    if tries > 10000:
+      raise RuntimeError("Corridor took too long to generate, aborting.")
   #Create non-overlapping islands outside of the corridor.
   islands, _ = generate_islands(num_islands,corridor, islandBoundary)
-  #Repack boundary into a polygon.
-  pboundary = box(*boundary[0], *boundary[1])
   #Target Area
   end_poly = _get_end_polygon(end,end_radius)
   
-  return Environment(islands, corridor, start, end_poly, pboundary)
+  return Environment(islands, corridor, start, end_poly, boxboundary)
 #Different difficulty levels
 #Maybe a few hand picked ones.
 
+def _get_max_curvature(spline: BSpline, samples: int = 10_000) -> float:
+    """
+    Estimate the maximum absolute curvature of a
+    2D parametric BSpline by dense sampling.
+    """
+
+    t_min = spline.t[spline.k]
+    t_max = spline.t[-spline.k - 1]
+
+    ts = np.linspace(t_min, t_max, samples)
+
+    d1 = spline.derivative(1)(ts)
+    d2 = spline.derivative(2)(ts)
+
+    x1 = d1[:, 0]
+    y1 = d1[:, 1]
+
+    x2 = d2[:, 0]
+    y2 = d2[:, 1]
+
+    numerator = np.abs(
+        x1 * y2 - y1 * x2
+    )
+
+    denominator = (
+        x1**2 + y1**2
+    )**1.5
+
+    curvature = np.divide(
+        numerator,
+        denominator,
+        out=np.zeros_like(numerator),
+        where=denominator > 0,
+    )
+
+    return float(np.max(curvature))

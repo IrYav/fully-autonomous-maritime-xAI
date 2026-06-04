@@ -1,5 +1,6 @@
 
 from dataclasses import dataclass
+from math import ceil
 import sys
 from PySide6.QtWidgets import QApplication
 import numpy as np
@@ -19,27 +20,49 @@ class SimulationConfig:
     Args:
       boundary: Numpy (2,) array delimiting the area the ship may travel, islands may protrude.
       ship_params: Variables defining the ship instance.
+      lview_size: Geometrical size of the local view rasterized to...
+      lview_res: Pixel size of the local view. 
       h: optional, mesh resolution. Use `None` to use a boundary-derived dynamic default value.
-      lview: Resolution of the local view 
+      dt: optional, time that passes per simulation step.
+      max_eps: Maximum episodes allowed per training run, 
+        uses a plausible value using world size, ships max speed and dt, iff `None`
   '''
   boundary: np.ndarray
   ship_params: agent.ShipParams
   lview_size: np.ndarray
   lview_res: np.ndarray
   h: float | None = None
+  dt: float = 5.0
+  max_steps: int | None = None
   def __post_init__(self):
     if self.h is None:
       self.h = np.max(self.boundary[1] - self.boundary[0]) / 40
+    if self.max_steps == None:
+      #Ship gets enough steps to traverse the world multiple times.
+      dist = np.max(self.boundary)
+      stepLen = self.ship_params.max_velocity * self.dt
+      self.max_steps = ceil(20 * dist / stepLen)
 
 class BaseController:
-  def __init__(self, config):
+  def __init__(self, config : SimulationConfig):
     self.config = config
     self.sim_state = None
     self.lview = None
 
   def new_training_instance(self):
+    ship_width = self.config.ship_params.width
+    ship_len = self.config.ship_params.length
+    ship_kappa = self.config.ship_params.max_curvature
+    turning_radius = 1 / self.config.ship_params.max_curvature
     #Simulation Data
-    env = envi.new_environment(self.config.boundary, num_islands=15, end_radius= 5 * self.config.h)
+    env = envi.new_environment(
+      self.config.boundary, 
+      num_islands = 15, 
+      end_radius = max(5 * self.config.h, 1.5 * ship_len),
+      corridor_width = 2 * ship_width,
+      min_border_dist = 1.5 * turning_radius,
+      max_curvature = ship_kappa
+    )
     mesh_raw = mesher_prep.prepare_domain(env.islands, env.end_poly, self.config.boundary, h=self.config.h)
     mesh = mesher.build_mesh(mesh_raw)
     bc = HarmonicField.get_boundary_conditions(mesh)
@@ -51,7 +74,7 @@ class BaseController:
 
 
     
-  def simulate_step(self, action, dt):
+  def simulate_step(self, action: agent.Action, dt):
     ship, env = self.sim_state.ship, self.sim_state.env
     state, params = ship.state, ship.params
 
