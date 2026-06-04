@@ -15,7 +15,7 @@ class HarmonicField:
   u: np.ndarray
   edge_labels: dict[frozenset[int], str]
   
-  def __init__(self, gmsh_mesh: Mesh, bc: list[tuple[npt.NDArray[np.int_] | None, float]]):
+  def __init__(self, gmsh_mesh: Mesh, bc: list[tuple[npt.NDArray[np.int_], float]]  | None = None):
     '''
       Creates the harmonic field on the mesh, given the boundary conditions.
       Currently only accepts dirichlet boundary conditions.
@@ -31,7 +31,7 @@ class HarmonicField:
     '''
 
     if bc is None:
-      bc = self.get_boundary_conditions(mesh)
+      bc = self.get_boundary_conditions(gmsh_mesh)
     # --- Mesh conversion ---
     points = np.ascontiguousarray(
         gmsh_mesh.points[:, :2].T

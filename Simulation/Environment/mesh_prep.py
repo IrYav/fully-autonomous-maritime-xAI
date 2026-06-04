@@ -115,6 +115,7 @@ def fix_boundary_contacts(polygon: Polygon, boundary: Polygon, l: float) -> Poly
   fixes = MultiPolygon()
 
   def make_patch(point: Point, boundary: Polygon, l: float) -> Polygon:
+    result = None
     xmin, ymin, xmax, ymax = boundary.bounds
     x, y = point.x, point.y
 
@@ -127,16 +128,26 @@ def fix_boundary_contacts(polygon: Polygon, boundary: Polygon, l: float) -> Poly
 
     # Corner Cases
     for cx, cy in corners:
-      if math.hypot(x - cx, y - cy) < 1.5 * l:
+      if math.hypot(x - cx, y - cy) < l:
         x0 = min(cx, xmax - l)
         y0 = min(cy, ymax - l)
-        return box(x0, y0, x0 + l, y0 + l)
+        result = box(x0, y0, x0 + l, y0 + l)
       
     # Edge cases.
-    x0 = min(max(x0, xmin), xmax - l)
-    y0 = min(max(y0, ymin), ymax - l)
+    if result is None:
+      x0 = min(max(x0, xmin), xmax - l)
+      y0 = min(max(y0, ymin), ymax - l)
+      result = box(x0, y0, x0 + l, y0 + l)
 
-    return box(x0, y0, x0 + l, y0 + l)
+    #Patch should actually cover the point.
+    assert result.covers(point), (
+      f"Patch: \n \
+      {result}\n \
+      does not cover contact point: \n \
+      {point}"
+    )
+
+    return result
 
   #Get contacts
   contacts = extract_geometries(contacts, ["Point", "LineString"])
