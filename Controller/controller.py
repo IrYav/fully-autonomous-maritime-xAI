@@ -22,10 +22,10 @@ class SimulationConfig:
       ship_params: Variables defining the ship instance.
       lview_size: Geometrical size of the local view rasterized to...
       lview_res: Pixel size of the local view. 
-      h: optional, mesh resolution. Use `None` to use a boundary-derived dynamic default value.
+      h: optional, mesh resolution. Use `None` to use a boundary-size derived value.
       dt: optional, time that passes per simulation step.
       max_eps: Maximum episodes allowed per training run, 
-        uses a plausible value using world size, ships max speed and dt, iff `None`
+        `None` generates a plausible value using world size, ships max speed and dt, iff `None`
   '''
   boundary: np.ndarray
   ship_params: agent.ShipParams
@@ -54,7 +54,10 @@ class BaseController:
     ship_len = self.config.ship_params.length
     ship_kappa = self.config.ship_params.max_curvature
     turning_radius = 1 / self.config.ship_params.max_curvature
-    #Simulation Data
+
+    #-----------------
+    # Simulation Data
+    #-----------------
     env = envi.new_environment(
       self.config.boundary, 
       num_islands = 15, 
@@ -65,8 +68,7 @@ class BaseController:
     )
     mesh_raw = mesher_prep.prepare_domain(env.islands, env.end_poly, self.config.boundary, h=self.config.h)
     mesh = mesher.build_mesh(mesh_raw)
-    bc = HarmonicField.get_boundary_conditions(mesh)
-    field = HarmonicField(mesh, bc)
+    field = HarmonicField(mesh)
     ship_state = agent.get_start_state(env)
     ship = agent.Ship(ship_state, self.config.ship_params)
     self.lview = get_local_view(env, ship, self.config.lview_size, self.config.lview_res)
