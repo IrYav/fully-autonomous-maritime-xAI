@@ -98,7 +98,7 @@ class MaritimeCNN(nn.Module):
   def _build_cnn(self) -> nn.Sequential:
     layers: list[nn.Module] = []
 
-    in_channels = 1
+    in_channels = 3
 
     for out_channels in self.config.cnn_channels:
       layers.extend([
@@ -148,7 +148,7 @@ class MaritimeCNN(nn.Module):
     with torch.no_grad():
       dummy = torch.zeros(
         1,
-        1,
+        3,
         self.config.image_size,
         self.config.image_size,
       )
@@ -156,22 +156,3 @@ class MaritimeCNN(nn.Module):
       out = self.cnn(dummy)
 
     return int(torch.numel(out))
-
-#Some network
-# Probably CNN + Crude MLP for now.
-
-#Input local image (centered around agent, rotated so agent faces up):
-#  (2 * x)², with x probably something like k * max(turning_radius, dt * max_velocity) 
-
-#Secondary Input: Vector of data points:
-# Including (but not limited to), 
-# Target Related:
-#   \delta angle ((cosθ,sinθ)) between heading and end, 
-#   distance (component wise, not sqrt(x² + y²))
-# Ship Related:
-# Velocity, single number, we only drive up
-
-#Expansion later on, given strategy map:
-# -position (x,y), 
-# -velocity (x,y)
-# -Heading (cosθ,sinθ) (verify gentle wrap around)
