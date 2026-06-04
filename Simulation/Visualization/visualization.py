@@ -243,6 +243,9 @@ class EnvironmentViewer(QWidget):
     self._draw_mesh()
     self._draw_potential()
     self._draw_ship()
+
+    self._apply_visibility_settings()
+
     self.canvas.draw()
 
   def _draw_environment(self):
@@ -386,6 +389,10 @@ class EnvironmentViewer(QWidget):
       artist.remove()
 
     self.artists[name] = None
+
+  def _apply_visibility_settings(self):
+    for name in self.visibility_boxes:
+      self.toggle_artist(name)
 
   def toggle_artist(self, name):
     artist = self.artists.get(name)
