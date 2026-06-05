@@ -25,8 +25,8 @@ class ShipEnv(gym.Env):
 
     self.sim_config = config
     
-    image_size = self.sim_config.lview_res[0]
-    self.net_config = NetworkConfig(image_size,11,2)
+    self.image_size = self.sim_config.lview_res[0]
+    self.net_config = get_net_conf(self.sim_config)
 
     self.grad_align = []
     
@@ -34,9 +34,9 @@ class ShipEnv(gym.Env):
 
       "image": spaces.Box(
         low=0,
-        high=1,
-        shape=(3, image_size, image_size),
-        dtype=np.float32,
+        high=255,
+        shape=(3, self.image_size, self.image_size),
+        dtype=np.uint8,
       ),
 
       "state": spaces.Box(
@@ -87,21 +87,27 @@ class ShipEnv(gym.Env):
 
     obs = self._get_obs()
 
+    truncated = self.steps >= self.sim_config.max_steps
+    terminated = len(collisions) > 0
+
     reward = -0.05
+
     if collisions == []:
+      if truncated:
+        reward = 0
       # Store gradient quality
-      alignment = self._get_grad_alignment(self.controller.sim_state)
-      self.grad_align.append(alignment)
-      #Time penalty gets alleviated, iff we go into 
-      reward *= 1 - 0.5 * max(alignment, 0)
+      else:
+        alignment = self._get_grad_alignment(self.controller.sim_state)
+        self.grad_align.append(alignment)
+        #Time penalty gets alleviated, iff we go towards the goal. 
+        reward *= 1 - 1.5 * max(alignment, 0)
     #End is the first entry, iff it's the only entry.
     elif collisions[0] == "end":
       reward = 100
     else:
       reward = -100
 
-    truncated = self.steps >= self.sim_config.max_steps
-    terminated = len(collisions) > 0
+
 
     if(terminated or truncated):
       grads = np.array(self.grad_align)
@@ -186,7 +192,7 @@ class ShipEnv(gym.Env):
         local_grad,
     )
     return reward_alignment
-  
+
   # =================================================
   # Optional Rendering
   # =================================================
@@ -202,3 +208,7 @@ class ShipEnv(gym.Env):
   def close(self):
 
     pass
+
+@staticmethod
+def get_net_conf(sim_config: SimulationConfig) -> NetworkConfig:
+  return NetworkConfig(sim_config.lview_res[0],11,2)

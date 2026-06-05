@@ -11,11 +11,12 @@ from Simulation.Environment.agent import Ship, ShipState, get_ship_polygon
 from Simulation.Environment.environment import Environment
 
 
-def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution: np.ndarray):
+def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution: np.ndarray, pixel_val = 255):
   '''
     Get a geometrical size[0] * size[1] (x,y) cutout centered around the ship, 
     rasterized to the graphical target resolution[0] * resolution[1] (rows, cols)
-    
+    Pixels are 0 iff empty, `pixel_val` otherwise.
+
     That includes 
     - scaling up/down,
     - discretizing,
@@ -68,7 +69,7 @@ def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution: n
     obs_mask,
     end_mask,
     ship_mask,
-  ], axis=0)
+  ], axis=0).astype(np.uint8) * pixel_val
 
 def rasterize(geom: BaseGeometry, resolution):
   '''
