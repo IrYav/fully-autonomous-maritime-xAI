@@ -201,7 +201,7 @@ def get_path(state: ShipState, traj: Trajectory, params: ShipParams, n_samples: 
   end_seg = LineString([pos1 - 0.5 * L * h1, pos1 + 0.5 * L * h1])
 
   skeleton = arc.union(start_seg).union(end_seg)
-  return skeleton.buffer(W / 2)
+  return skeleton.buffer(W / 2, quad_segs = 1)
   
 
 def rot_vect(theta:float):
