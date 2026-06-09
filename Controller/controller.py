@@ -4,7 +4,10 @@ from math import ceil
 import sys
 from PySide6.QtWidgets import QApplication
 import numpy as np
+from stable_baselines3 import PPO
+from PySide6.QtCore import QTimer
 
+from Agent.Observation.observation import build_observation
 from Agent.Observation.rasterize import get_local_view
 from Simulation.Environment.harmonic import HarmonicField
 from Simulation.Visualization.visualization import EnvironmentViewer
@@ -13,6 +16,12 @@ import Simulation.Environment.environment as envi
 import Simulation.Environment.mesh_prep as mesher_prep
 import Simulation.Environment.mesh as mesher
 import Simulation.Environment.agent as agent
+from enum import Enum, auto
+
+#Used for passively looping simulation. 
+class RunMode(Enum):
+  MANUAL = auto()
+  POLICY = auto()
 
 @dataclass
 class SimulationConfig:
@@ -91,10 +100,14 @@ class BaseController:
 
 
 class InteractiveController(BaseController):
-  def __init__(self, config):
+  def __init__(self, config: SimulationConfig, model: PPO | None):
     super().__init__(config)
     self.app = QApplication(sys.argv)
     self.viewer = EnvironmentViewer()
+    self.model = model
+    self.run_timer = QTimer()
+    self.run_timer.timeout.connect(self._timer_step)
+    self.run_mode = RunMode.MANUAL
     self._setup_buttons()
     self.new_training_instance()
 
@@ -102,9 +115,8 @@ class InteractiveController(BaseController):
     super().new_training_instance()
     self.viewer.set_sim_state(self.sim_state)
     self.viewer.set_lviews(self.lview)
-
-  def simulate_step(self):
-    action, dt = self.viewer.get_sim_input()
+  
+  def simulate_step(self, action, dt):
     ship_path, cols = super().simulate_step(action, dt)
 
     if cols:
@@ -115,17 +127,51 @@ class InteractiveController(BaseController):
 
     self.viewer.update_step(ship_path)
     self.viewer.set_lviews(self.lview)
+    return ship_path, cols
+
+  def simulate_manual_step(self):
+    action, dt = self.viewer.get_sim_input()
+    self.simulate_step(action, dt)
+
+  def simulate_policy_step(self):
+    if self.model is None:
+      raise RuntimeError("Trying to use a non-existing model to generate a step")
+      
+    obs = build_observation(self)
+
+    action, _ = self.model.predict(obs, deterministic=True)
+    action = agent.Action(*action)
+    self.simulate_step(action, self.config.dt) # Important, use fixed dt.
 
   def run(self):
     sys.exit(self.app.exec())
+  
+  def _toggle_manual_run(self, enabled: bool):
+    if enabled:
+      self.run_timer.start(100)
+    else:
+      self.run_timer.stop()
 
   def _setup_buttons(self):
+    run_modes = {"Manual": self._set_manual_mode}
     self.viewer.add_main_button("New Instance", self.new_training_instance)
-    self.viewer.add_sidebar_button("Simulate Step", self.simulate_step)
+    self.viewer.add_sidebar_button("Manual Step", self.simulate_manual_step)
+    if self.model is not None:
+      self.viewer.add_sidebar_button("Policy Step", self.simulate_policy_step)
+      run_modes["Policy"] = self._set_policy_mode
+    self.viewer.add_sidebar_button("Auto Run",self._toggle_manual_run,True)
+    self.viewer.add_radio_group("Run Mode",run_modes)
     self.viewer.show()
 
+  def _timer_step(self):
+    if self.run_mode == RunMode.MANUAL:
+      self.simulate_manual_step()
 
-#TODO: Might require changes so it can be used for training.
-#      Or maybe plain useless, as BaseController might provide everything.
-class TrainingController(BaseController):
-  pass
+    elif self.run_mode == RunMode.POLICY:
+      self.simulate_policy_step()
+
+  def _set_manual_mode(self):
+    self.run_mode = RunMode.MANUAL
+
+  def _set_policy_mode(self):
+    self.run_mode = RunMode.POLICY

@@ -2,10 +2,10 @@ import numpy as np
 import matplotlib.tri as mtri
 from matplotlib.figure import Figure
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
-  QApplication, QCheckBox, QDoubleSpinBox, QFormLayout,
-  QHBoxLayout, QLabel, QWidget, QVBoxLayout, QPushButton,
+  QApplication, QButtonGroup, QCheckBox, QDoubleSpinBox, QFormLayout,
+  QHBoxLayout, QLabel, QRadioButton, QWidget, QVBoxLayout, QPushButton,
   QSizePolicy, QSlider
   )
 from PySide6.QtGui import QImage, QPixmap
@@ -189,7 +189,7 @@ class EnvironmentViewer(QWidget):
       self.ship_label,
     ]
     for label, mask in zip(labels, obs):
-      mask = mask.astype(np.uint8) * 255
+      mask = mask.astype(np.uint8)
 
       rows, cols = mask.shape
 
@@ -216,12 +216,42 @@ class EnvironmentViewer(QWidget):
     self.button_layout.addWidget(btn)
     return btn
 
-  def add_sidebar_button(self, label, callback):
+  def add_sidebar_button(self, label, callback, toggleable = False):
     btn = QPushButton(label)
-    btn.clicked.connect(lambda *_: callback())
+    if toggleable:
+      btn.setCheckable(True)
+      btn.toggled.connect(callback)
+    else:
+      btn.clicked.connect(lambda *_: callback())
+
     self.sidebar_layout.addWidget(btn)
     return btn
   
+  def add_radio_group(self, title: str, options: dict[str, callable]):
+    container = QWidget()
+    layout = QVBoxLayout(container)
+
+    layout.addWidget(QLabel(title))
+
+    group = QButtonGroup(container)
+
+    for i, (label, callback) in enumerate(options.items()):
+      btn = QRadioButton(label)
+
+      if i == 0:
+        btn.setChecked(True)
+
+      btn.toggled.connect(
+        lambda checked, cb=callback: checked and cb()
+      )
+
+      group.addButton(btn)
+      layout.addWidget(btn)
+
+    self.sidebar_layout.addWidget(container)
+
+    return group
+
   def get_sim_input(self):
     return (
       Action(
@@ -493,7 +523,6 @@ class EnvironmentViewer(QWidget):
     print("\n--- CLICK ---")
     self.inspect_triangle(pos)
 
-    # optional: visuelles Highlight
     tri_nodes = field.mesh.t[:, tri_id]
     coords = field.mesh.p[:, tri_nodes]
 

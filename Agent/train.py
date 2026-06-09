@@ -5,16 +5,8 @@ from stable_baselines3.common.env_checker import check_env
 
 from Agent.Wrappers.ship_wrapper import ShipEnv
 from Controller.controller import SimulationConfig
-from Simulation.Auxilaries.ship_instances import ferry
+from Simulation.Auxilaries.sim_config import sim_config
 #from network import MaritimeCNN, NetworkConfig
-
-#Learning environment specifics
-sim_config = SimulationConfig(
-  boundary = np.array([[-2500, -2500], [2500, 2500]], dtype=float),
-  ship_params = ferry(),
-  lview_size = np.array([300,300]), 
-  lview_res = np.array([64,64])
-  )
 
 #Gym Environment
 env = ShipEnv(sim_config)
@@ -55,9 +47,10 @@ model = PPO(
 # --------------------------------------------------
 # Train
 # --------------------------------------------------
-
+model = PPO.load("ppo_ship", env= env)
 model.learn(
   total_timesteps=1_000_000,
+  reset_num_timesteps=False
 )
 
 # --------------------------------------------------

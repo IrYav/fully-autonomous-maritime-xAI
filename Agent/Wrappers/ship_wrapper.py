@@ -5,6 +5,7 @@ import numpy as np
 
 from gymnasium import spaces
 
+from Agent.Observation.observation import build_observation
 from Agent.Observation.rasterize import get_local_view
 from Agent.network import NetworkConfig
 from Controller.controller import BaseController, SimulationConfig
@@ -63,7 +64,7 @@ class ShipEnv(gym.Env):
     self.controller.new_training_instance()
     self.steps = 0
     self.grad_align = []
-    obs = self._get_obs()
+    obs = build_observation(self.controller)
 
     info = {}
 
@@ -85,7 +86,7 @@ class ShipEnv(gym.Env):
     # Build observation
     # ---------------------------------------------
 
-    obs = self._get_obs()
+    obs = build_observation(self.controller)
 
     truncated = self.steps >= self.sim_config.max_steps
     terminated = len(collisions) > 0
@@ -95,8 +96,8 @@ class ShipEnv(gym.Env):
     if collisions == []:
       if truncated:
         reward = 0
-      # Store gradient quality
       else:
+        # Store gradient quality
         alignment = self._get_grad_alignment(self.controller.sim_state)
         self.grad_align.append(alignment)
         #Time penalty gets alleviated, iff we go towards the goal. 
@@ -128,57 +129,6 @@ class ShipEnv(gym.Env):
       truncated,
       info,
     )
-
-  # =================================================
-  # Observation Construction
-  # =================================================
-
-  def _get_obs(self):
-    #Global View:
-    #TODO
-
-    #Local View:
-    env = self.controller.sim_state.env
-    ship = self.controller.sim_state.ship
-    size, res = self.sim_config.lview_size, self.sim_config.lview_res
-    local_view = get_local_view(env, ship, size, res)
-
-    #State Vector:
-    # TODO:
-    end_pos = np.asarray(
-        env.end_poly.centroid.coords[0]
-    )
-    ship_pos = ship.state.position
-
-    heading = ship.state.heading
-
-    rel_pos = end_pos - ship_pos
-    rel_angle = (
-        math.atan2(rel_pos[1], rel_pos[0])
-        - heading
-    )
-
-    state_obs = np.array([
-
-        *ship_pos,
-
-        math.cos(heading),
-        math.sin(heading),
-
-        ship.state.velocity,
-
-        *rel_pos,
-
-        math.cos(rel_angle),
-        math.sin(rel_angle),
-
-        *end_pos,
-    ], dtype=np.float32)
-
-    return {
-      "image": local_view,
-      "state": state_obs,
-    }
 
   def _get_grad_alignment(self, sim_state: SimulationState) -> float:
     heading = sim_state.ship.state.heading
