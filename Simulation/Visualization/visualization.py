@@ -6,7 +6,7 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
   QApplication, QButtonGroup, QCheckBox, QDoubleSpinBox, QFormLayout,
   QHBoxLayout, QLabel, QRadioButton, QWidget, QVBoxLayout, QPushButton,
-  QSizePolicy, QSlider
+  QSizePolicy, QSlider, QTableWidget, QTableWidgetItem
   )
 from PySide6.QtGui import QImage, QPixmap
 
@@ -65,7 +65,7 @@ class EnvironmentViewer(QWidget):
 
     self._setup_visibility_controls(self.sidebar_layout)
     self._setup_inputs(self.sidebar_layout)
-    self._setup_lviews(self.local_view_layout)
+    self._setup_right_half(self.local_view_layout)
     # Push checkboxes up.
     self.sidebar_layout.addStretch()
 
@@ -129,7 +129,7 @@ class EnvironmentViewer(QWidget):
       layout.addWidget(box)
       self.visibility_boxes[name] = box
   
-  def _setup_lviews(self, layout):
+  def _setup_right_half(self, layout):
     self.local_view_layout = QVBoxLayout()
 
     self.obs_title = QLabel("Obstacles")
@@ -161,12 +161,24 @@ class EnvironmentViewer(QWidget):
 
     self.local_view_layout.addStretch(1)
 
-    self.local_view_layout.addWidget(self.obs_label,1)
+    #Local views
+    self.local_view_layout.addWidget(self.obs_label,10)
     self.local_view_layout.addWidget(self.obs_title)
-    self.local_view_layout.addWidget(self.end_label,1)
+    self.local_view_layout.addWidget(self.end_label,10)
     self.local_view_layout.addWidget(self.end_title)
-    self.local_view_layout.addWidget(self.ship_label,1)
+    self.local_view_layout.addWidget(self.ship_label,10)
     self.local_view_layout.addWidget(self.ship_title)
+
+    #State vector
+    self.debug_table = QTableWidget()
+    self.debug_table.setColumnCount(2)
+    self.debug_table.setHorizontalHeaderLabels(
+      ["Variable", "Value"]
+    )
+    self.debug_table.setEditTriggers(
+      QTableWidget.NoEditTriggers
+    )
+    self.local_view_layout.addWidget(self.debug_table,30)
 
     self.local_view_layout.addStretch(1)
 
@@ -264,6 +276,18 @@ class EnvironmentViewer(QWidget):
     self._draw_trajectory(ship_path)
     self.canvas.draw()
 
+  def update_debug_table(self, data: dict):
+    self.debug_table.setRowCount(len(data))
+
+    for row, (key, value) in enumerate(data.items()):
+      self.debug_table.setItem(
+        row, 0,
+        QTableWidgetItem(str(key))
+      )
+      self.debug_table.setItem(
+        row, 1,
+        QTableWidgetItem(str(f"{value:.6g}"))
+      )
   # ---------- Rendering ----------
   def _render(self):
     if self.sim_state.env is None or self.sim_state.mesh is None:

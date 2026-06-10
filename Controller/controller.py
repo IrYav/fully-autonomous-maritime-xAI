@@ -87,6 +87,7 @@ class InteractiveController(BaseController):
     super().new_training_instance()
     self.viewer.set_sim_state(self.sim_state)
     self.viewer.set_lviews(self.lview)
+    self.viewer.update_debug_table(self._get_state_dict())
   
   def simulate_step(self, action, dt):
     ship_path, cols = super().simulate_step(action, dt)
@@ -99,6 +100,7 @@ class InteractiveController(BaseController):
 
     self.viewer.update_step(ship_path)
     self.viewer.set_lviews(self.lview)
+    self.viewer.update_debug_table(self._get_state_dict())
     return ship_path, cols
 
   def simulate_manual_step(self):
@@ -147,3 +149,7 @@ class InteractiveController(BaseController):
 
   def _set_policy_mode(self):
     self.run_mode = RunMode.POLICY
+
+  def _get_state_dict(self):
+    obs = build_observation(self, True)
+    return obs["state"]

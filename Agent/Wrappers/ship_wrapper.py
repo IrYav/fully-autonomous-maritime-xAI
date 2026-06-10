@@ -98,6 +98,9 @@ class ShipEnv(gym.Env):
 
     truncated = self.steps >= self.sim_config.max_steps
     terminated = len(collisions) > 0
+    
+    if terminated or truncated:
+      self._update_counter(collisions)
 
     #Flat time penalty
     reward = -0.05
@@ -164,10 +167,6 @@ class ShipEnv(gym.Env):
         print(f"Alignment mean: {grads.mean()}")
       print(f"Collisions: {collisions}")
 
-  def _print_counter(self):
-    print("Learning stats:")
-    for key, value in self.resultCounter.items():
-      print(f"  {key}: {value}")
   def _update_counter(self, collisions):
     if collisions == []:
       self.resultCounter["Truncated"] += 1

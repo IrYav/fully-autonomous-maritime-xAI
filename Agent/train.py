@@ -4,11 +4,15 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 
 from Agent.Wrappers.ship_wrapper import ShipEnv
+from Agent.callback import StatsCallback
 from Simulation.Auxilaries.sim_config import sim_config
 #from network import MaritimeCNN, NetworkConfig
 
 #Gym Environment
 env = ShipEnv(sim_config)
+
+#Add custom logging
+callback = StatsCallback()
 
 net_config = env.net_config
 # Optional but VERY useful early on
@@ -48,7 +52,8 @@ model = PPO(
 # --------------------------------------------------
 model.learn(
   total_timesteps=500_000,
-  reset_num_timesteps=False
+  #reset_num_timesteps=False,
+  callback=callback,
 )
 
 # --------------------------------------------------
