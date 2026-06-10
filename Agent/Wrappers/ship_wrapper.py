@@ -5,12 +5,16 @@ import numpy as np
 
 from gymnasium import spaces
 
-from Agent.Observation.observation import build_observation
+from Agent.Observation.observation import build_observation, get_posgrad_alignment, get_vectorgrad_alignment
 from Agent.Observation.rasterize import get_local_view
 from Agent.network import NetworkConfig
-from Controller.controller import BaseController, SimulationConfig
-from Simulation.Auxilaries.auxiliaries import SimulationState
+from Controller.controller import BaseController
+from Simulation.Auxilaries.sim_config import SimulationConfig
 from Simulation.Environment.agent import Action
+
+from collections import defaultdict
+from collections import Counter
+
 
 
 class ShipEnv(gym.Env):
@@ -22,6 +26,7 @@ class ShipEnv(gym.Env):
   def __init__(self, config: SimulationConfig):
     super().__init__()
 
+
     self.controller = BaseController(config)
 
     self.sim_config = config
@@ -30,7 +35,8 @@ class ShipEnv(gym.Env):
     self.net_config = get_net_conf(self.sim_config)
 
     self.grad_align = []
-    
+    self.resultCounter = Counter()
+
     self.observation_space = spaces.Dict({
 
       "image": spaces.Box(
@@ -79,8 +85,10 @@ class ShipEnv(gym.Env):
     #Translate to Simulation action
     action = Action(*action)
 
+    pos0 = self.controller.sim_state.ship.state.position
     #collisions include benign cases of reaching the end.
     path, collisions = self.controller.simulate_step(action, self.sim_config.dt)
+    pos1 = self.controller.sim_state.ship.state.position
 
     # ---------------------------------------------
     # Build observation
@@ -91,34 +99,32 @@ class ShipEnv(gym.Env):
     truncated = self.steps >= self.sim_config.max_steps
     terminated = len(collisions) > 0
 
+    #Flat time penalty
     reward = -0.05
 
     if collisions == []:
-      if truncated:
-        reward = 0
-      else:
-        # Store gradient quality
-        alignment = self._get_grad_alignment(self.controller.sim_state)
-        self.grad_align.append(alignment)
-        #Time penalty gets alleviated, iff we go towards the goal. 
-        reward *= 1 - 1.5 * max(alignment, 0)
+      alignment, dist = get_vectorgrad_alignment(self.controller.sim_state, pos0, pos1)
+      # How far do we travel, and how good is the alignment?
+      progress_reward = alignment * dist
+      # Scale progress bonus down with map size.
+      map_diagonal = np.linalg.norm(self.sim_config.boundary[1] - self.sim_config.boundary[0])
+      progress_reward /= map_diagonal
+      # Weighting factor for following the harmonic field, for complex maps the 
+      # harmonic field "flows" past islands, and hence progress rewards may 
+      # sum up to multiples of the following factor, 
+      # as a good path may be longer than the diagonal.
+      progress_reward *= 50
+
+      # Store gradient quality (for logging)
+      self.grad_align.append(alignment)
+
+      reward += progress_reward
+
     #End is the first entry, iff it's the only entry.
     elif collisions[0] == "end":
-      reward = 100
+      reward = 100 #Reached end
     else:
-      reward = -100
-
-
-
-    if(terminated or truncated):
-      grads = np.array(self.grad_align)
-      print("-----Episode Over-----")
-      if self.steps < 2:
-        print("Stopped run instantly.")
-      else:
-        print(f"Step count: {self.steps} of {self.sim_config.max_steps}")
-        print(f"Alignment mean: {grads.mean()}")
-      print(f"Collisions: {collisions}")
+      reward = -100 #Hard crash
 
     info = {}
 
@@ -129,19 +135,6 @@ class ShipEnv(gym.Env):
       truncated,
       info,
     )
-
-  def _get_grad_alignment(self, sim_state: SimulationState) -> float:
-    heading = sim_state.ship.state.heading
-    pos = sim_state.ship.state.position
-
-    ship_dir = np.array([math.cos(heading), math.sin(heading)])
-    local_grad = sim_state.field.gradient_at_(pos)
-
-    reward_alignment = np.dot(
-        ship_dir,
-        local_grad,
-    )
-    return reward_alignment
 
   # =================================================
   # Optional Rendering
@@ -158,6 +151,32 @@ class ShipEnv(gym.Env):
   def close(self):
 
     pass
+
+
+  def _print_ep_info(self, terminated, truncated, collisions):
+    if(terminated or truncated):
+      grads = np.array(self.grad_align)
+      print("-----Episode Over-----")
+      if self.steps < 2:
+        print("Stopped run instantly.")
+      else:
+        print(f"Step count: {self.steps} of {self.sim_config.max_steps}")
+        print(f"Alignment mean: {grads.mean()}")
+      print(f"Collisions: {collisions}")
+
+  def _print_counter(self):
+    print("Learning stats:")
+    for key, value in self.resultCounter.items():
+      print(f"  {key}: {value}")
+  def _update_counter(self, collisions):
+    if collisions == []:
+      self.resultCounter["Truncated"] += 1
+    elif collisions[0] == "end":
+      self.resultCounter["Success"] += 1
+    elif collisions[0][0:6] == "island":
+      self.resultCounter["Crashed into island"] += 1
+    else:
+      self.resultCounter["Left map"] += 1
 
 @staticmethod
 def get_net_conf(sim_config: SimulationConfig) -> NetworkConfig:

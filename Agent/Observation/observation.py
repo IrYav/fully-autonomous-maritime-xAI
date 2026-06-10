@@ -3,6 +3,7 @@ import math
 import numpy as np
 
 from Agent.Observation.rasterize import get_local_view
+from Simulation.Auxilaries.auxiliaries import SimulationState
 
 
 def build_observation(controller):
@@ -52,3 +53,29 @@ def build_observation(controller):
     "image": local_view,
     "state": state_obs,
   }
+
+def get_posgrad_alignment(sim_state: SimulationState) -> float:
+    heading = sim_state.ship.state.heading
+    pos = sim_state.ship.state.position
+
+    ship_dir = np.array([math.cos(heading), math.sin(heading)])
+    local_grad = sim_state.field.gradient_at_(pos)
+
+    reward_alignment = np.dot(
+        ship_dir,
+        local_grad,
+    )
+    return reward_alignment
+
+def get_vectorgrad_alignment(sim_state: SimulationState, pos0, pos1) -> float:
+    delta_pos = pos1 - pos0
+
+    dist = np.linalg.norm(delta_pos)
+    if dist == 0:
+        return 0.0
+
+    move_dir = delta_pos / dist
+
+    grad_dir = sim_state.field.gradient_at_(pos0)
+
+    return np.dot(move_dir, grad_dir), dist

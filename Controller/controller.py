@@ -7,11 +7,12 @@ import numpy as np
 from stable_baselines3 import PPO
 from PySide6.QtCore import QTimer
 
-from Agent.Observation.observation import build_observation
+from Agent.Observation.observation import build_observation, get_posgrad_alignment
 from Agent.Observation.rasterize import get_local_view
 from Simulation.Environment.harmonic import HarmonicField
 from Simulation.Visualization.visualization import EnvironmentViewer
 from Simulation.Auxilaries.auxiliaries import SimulationState
+from Simulation.Auxilaries.sim_config import SimulationConfig
 import Simulation.Environment.environment as envi
 import Simulation.Environment.mesh_prep as mesher_prep
 import Simulation.Environment.mesh as mesher
@@ -22,35 +23,6 @@ from enum import Enum, auto
 class RunMode(Enum):
   MANUAL = auto()
   POLICY = auto()
-
-@dataclass
-class SimulationConfig:
-  '''
-    Args:
-      boundary: Numpy (2,) array delimiting the area the ship may travel, islands may protrude.
-      ship_params: Variables defining the ship instance.
-      lview_size: Geometrical size of the local view rasterized to...
-      lview_res: Pixel size of the local view. 
-      h: optional, mesh resolution. Use `None` to use a boundary-size derived value.
-      dt: optional, time that passes per simulation step.
-      max_eps: Maximum episodes allowed per training run, 
-        `None` generates a plausible value using world size, ships max speed and dt, iff `None`
-  '''
-  boundary: np.ndarray
-  ship_params: agent.ShipParams
-  lview_size: np.ndarray
-  lview_res: np.ndarray
-  h: float | None = None
-  dt: float = 5.0
-  max_steps: int | None = None
-  def __post_init__(self):
-    if self.h is None:
-      self.h = np.max(self.boundary[1] - self.boundary[0]) / 40
-    if self.max_steps == None:
-      #Ship gets enough steps to traverse the world multiple times.
-      dist = np.max(self.boundary)
-      stepLen = self.ship_params.max_velocity * self.dt
-      self.max_steps = ceil(20 * dist / stepLen)
 
 class BaseController:
   def __init__(self, config : SimulationConfig):

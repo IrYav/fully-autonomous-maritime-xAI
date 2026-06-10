@@ -4,7 +4,6 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 
 from Agent.Wrappers.ship_wrapper import ShipEnv
-from Controller.controller import SimulationConfig
 from Simulation.Auxilaries.sim_config import sim_config
 #from network import MaritimeCNN, NetworkConfig
 
@@ -47,9 +46,8 @@ model = PPO(
 # --------------------------------------------------
 # Train
 # --------------------------------------------------
-model = PPO.load("ppo_ship", env= env)
 model.learn(
-  total_timesteps=1_000_000,
+  total_timesteps=500_000,
   reset_num_timesteps=False
 )
 
