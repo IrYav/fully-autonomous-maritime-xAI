@@ -47,7 +47,8 @@ def build_observation(controller, debugging=False):
 
     "heading_cos": math.cos(heading),
     "heading_sin": math.sin(heading),
-
+    # Normalized to [-1 * k, 1] with k = max_rev_vel/max_vel. 
+    # 0 meaning no movement is more important.
     "velocity_norm": ship.state.velocity / ship.params.max_velocity,
 
     "rel_x_norm": rel_pos_norm[0],
