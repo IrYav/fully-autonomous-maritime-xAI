@@ -30,22 +30,22 @@ class BaseController:
     self.sim_state = None
     self.lview = None
 
-  def new_training_instance(self):
+  def new_training_instance(self, num_islands = 15, scenario = None):
     ship_width = self.config.ship_params.width
     ship_len = self.config.ship_params.length
     ship_kappa = self.config.ship_params.max_curvature
     turning_radius = 1 / self.config.ship_params.max_curvature
-
     #-----------------
     # Simulation Data
     #-----------------
     env = envi.new_environment(
       self.config.boundary, 
-      num_islands = 15, 
+      num_islands = num_islands, 
       end_radius = max(5 * self.config.h, 1.5 * ship_len),
       corridor_width = 2 * ship_width,
       min_border_dist = 1.5 * turning_radius,
-      max_curvature = ship_kappa
+      max_curvature = ship_kappa,
+      scenario = scenario,
     )
     mesh_raw = mesher_prep.prepare_domain(env.islands, env.end_poly, self.config.boundary, h=self.config.h)
     mesh = mesher.build_mesh(mesh_raw)

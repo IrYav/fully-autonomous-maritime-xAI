@@ -96,7 +96,7 @@ def rasterize(geom: BaseGeometry, resolution):
   if geom.area < 1e-12:
     return mask
   
-  #Get all polygons
+  #We can only render polygons one by one.
   polys = extract_geometries(geom, ["Polygon"])
 
   #Collects exteriors and interiors.

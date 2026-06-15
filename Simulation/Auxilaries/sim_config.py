@@ -63,6 +63,12 @@ class SimulationConfig:
       print(f"{required_vr} > {view_range}")
     return
 
+  def map_diagonal(self):
+    return np.linalg.norm(
+      self.boundary[1] - 
+      self.boundary[0]
+      )
+
 sim_config = SimulationConfig(
   boundary = np.array([[-2500, -2500], [2500, 2500]], dtype=float),
   ship_params = ferry(),

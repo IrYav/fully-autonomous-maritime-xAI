@@ -12,8 +12,8 @@ from Controller.controller import BaseController
 from Simulation.Auxilaries.sim_config import SimulationConfig
 from Simulation.Environment.agent import Action
 
-from collections import defaultdict
-from collections import Counter
+from collections import deque
+
 
 
 
@@ -31,11 +31,13 @@ class ShipEnv(gym.Env):
 
     self.sim_config = config
     
+    self.difficulty = (0,)
+
     self.image_size = self.sim_config.lview_res[0]
     self.net_config = get_net_conf(self.sim_config)
 
     self.grad_align = []
-    self.resultCounter = Counter()
+    self.results = deque(maxlen=100)
 
     self.observation_space = spaces.Dict({
 
@@ -67,7 +69,7 @@ class ShipEnv(gym.Env):
 
   def reset(self, seed=None, options=None):
     super().reset(seed=seed)
-    self.controller.new_training_instance()
+    self.controller.new_training_instance(*self.difficulty)
     self.steps = 0
     self.grad_align = []
     obs = build_observation(self.controller)
@@ -110,8 +112,7 @@ class ShipEnv(gym.Env):
       # How far do we travel, and how good is the alignment?
       progress_reward = alignment * dist
       # Scale progress bonus down with map size.
-      map_diagonal = np.linalg.norm(self.sim_config.boundary[1] - self.sim_config.boundary[0])
-      progress_reward /= map_diagonal
+      progress_reward /= self.sim_config.map_diagonal()
       # Weighting factor for following the harmonic field, for complex maps the 
       # harmonic field "flows" past islands, and hence progress rewards may 
       # sum up to multiples of the following factor, 
@@ -169,13 +170,13 @@ class ShipEnv(gym.Env):
 
   def _update_counter(self, collisions):
     if collisions == []:
-      self.resultCounter["Truncated"] += 1
+      self.results.append("Truncated")
     elif collisions[0] == "end":
-      self.resultCounter["Success"] += 1
+      self.results.append("Success")
     elif collisions[0][0:6] == "island":
-      self.resultCounter["Crashed into island"] += 1
+      self.results.append("Crashed into island")
     else:
-      self.resultCounter["Left map"] += 1
+      self.results.append("Left map")
 
 @staticmethod
 def get_net_conf(sim_config: SimulationConfig) -> NetworkConfig:

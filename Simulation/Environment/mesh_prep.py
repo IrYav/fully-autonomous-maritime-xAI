@@ -68,6 +68,13 @@ def prepare_domain(islands: MultiPolygon, end_poly: Polygon, boundary, h=5.0, ep
   # Remove everything strictly outside the boundary.
   islands = islands.intersection(domain)
 
+  # Early exit, if no islands are left within the domain.
+  if islands.area < 1e-12:
+    domain = domain.difference(end_poly)
+    domain = _flatten_domain(domain)
+    labeled_rings = label_domain(domain, [], end_poly)
+    return PreparedDomain(labeled_rings, h, eps)
+
   #List of Polygons, each one an island
   islands = getattr(islands, "geoms", [islands])
 
@@ -245,7 +252,7 @@ def label_domain(domain: Polygon, islands: list[Polygon], end_poly: Polygon, tol
   island_boundaries = [isle.exterior.buffer(1e-10) for isle in islands]
 
   # Edge classification, with priority.
-  def classify_edge(edge: LineString, tol=1e-9):
+  def classify_edge(edge: LineString, tol=1e-8):
     best_label = None
     best_overlap = 0.0
 

@@ -52,7 +52,7 @@ def interpolate(points: Points) -> BSpline:
 def generate_points(n: int, boundary: Boundary) -> Points:
   """
   Generate random 2D points inside an axis-aligned bounding box.
-
+  Guarantees a minimum distance between result[0] and result[-1]
   Args:
     n: Number of points to generate, including start and end.
     boundary: Bottom-Left and Top-Right corner of rectangle, shape (2,2)
@@ -80,16 +80,16 @@ def generate_points(n: int, boundary: Boundary) -> Points:
   p1 = boundary[0] + walk_around_perimeter(r1, width, height)
 
   result.append(p0)
-  result.append(p1)
 
   #Inner control points.
   for n in range (2,n):
-    # Random for now, so we have something working. Prolly needs to be better
     rpoint = np.array(
       (random.random() * width , 
        random.random() * height), dtype=float)
     result.append(rpoint + boundary[0])
   
+  result.append(p1)
+
   return np.array(result, dtype=float)
 
 def projection_sort(points: Points) -> Points:
@@ -167,99 +167,6 @@ def generate_islands(count: int,
     A reasonably plausible island and the backbone spline.
   """
   curve = None
-  def island(pair, R=10, n=60):
-
-    #--Island Key Parameters--
-    alpha = np.random.uniform(0.3, 0.6) #Symmetry of island sides, 0 is indepedent, 1 is symmetrical
-    roughness = np.random.uniform(0.5, 0.8) # Amplitude of Noise
-    fpower = np.random.uniform(1.5, 1.9) # Smoothing out higher frequency noise
-    #--Create Island Backbone--
-    start, end = pair
-
-    direction = end - start
-    L = np.linalg.norm(direction)
-
-    normal = np.array([-direction[1], direction[0]]) / L
-
-    #u lets midpoint travel from A to B
-    u = np.random.uniform(0.2, 0.8)
-    #v shifts midpoint orthogonal AB
-    vmax = min(0.2, L/(2*R)) # Prevent bad curvature causing self cuts.
-    v = np.random.uniform(-vmax, vmax)
-
-    midPoint = start + direction * u + normal * (R * v)
-
-    #--Curvature Correction--
-    A = start
-    C = midPoint
-    B = end
-
-    tau = np.linalg.norm(C-A) / (np.linalg.norm(C-A) + np.linalg.norm(B-C))
-
-    a = (C - A - tau*(B-A)) / (tau*(tau-1))
-    b = (B-A) - a
-
-    t_star = -(a @ b) / (2 * (a @ a))
-    vel = 2*a*t_star + b
-
-    kappa_max = abs(b[0]*a[1] - b[1]*a[0]) * 2 / np.linalg.norm(vel)**3
-
-    if R * kappa_max > 1:
-        scale = 0.8 / (R * kappa_max)
-        v *= scale
-        midPoint = start + direction * u + normal * (R * v)
-
-    # ---------------------------------------------------------------
-    
-    bspline = interpolate(np.array([start,midPoint,end]))
-    #Creating a mantle around the backbone
-    theta = np.linspace(0, 1, n)
-
-    #Island Noise Parameters
-    freqs = np.array([2,3,5,7,11,13])
-    amps = roughness / freqs**fpower
-
-    #Offset for each sine curve
-    phases1 = np.random.random(len(freqs)) * 2*np.pi
-    phases2 = np.random.random(len(freqs)) * 2*np.pi
-
-    angles = freqs[:,None]*theta*2*np.pi
-
-    noise1 = np.sin(angles + phases1[:,None])
-    noise2 = np.sin(angles + phases2[:,None])
-    # Taper for smooth wrap around
-    noise_taper = np.sqrt(np.sin(np.pi * theta))
-    #"Reverse" Fourier-Transform, overlap several sine's
-    r1    = R * noise_taper * (1 + (amps[:,None] * noise1).sum(axis=0))
-
-    r_new = R * noise_taper * (1 + (amps[:,None] * noise2).sum(axis=0))
-    
-    # Partial correlation of r1 and r2, to weakly couple both island sides.
-    r2 = alpha * r1 + (1-alpha) * r_new
-
-    #Cap R to alleviate Self-Cut island slightly.
-    r_cap = 1.5 * R
-    r1 = np.minimum(r1, r_cap)
-    r2 = np.minimum(r2, r_cap)
-
-    curve = bspline(theta)
-    tangent = bspline.derivative()(theta)
-    normals = np.column_stack((-tangent[:,1], tangent[:,0]))
-    normals /= np.linalg.norm(normals, axis=1)[:,None]
-
-    #Island halves left and right of the spline, connected via taper.
-    left  = curve + r1[:,None] * normals
-    right = curve - r2[:,None] * normals
-
-    points = np.vstack((left, right[::-1]))
-
-    polygon = Polygon(points)
-    
-    #Random rotation of the entire angle
-    angle = np.random.uniform(0, 360)
-    polygon = rotate(polygon, angle, origin='centroid')
-
-    return polygon, curve
 
   islands = []
   scale = np.abs(boundary[1] - boundary[0])
@@ -272,24 +179,17 @@ def generate_islands(count: int,
       0.05 * np.mean(scale),
       0.25 * np.mean(scale)
     )
-    isle, curve = island(islePoints,R=radius)
+    isle, curve = island(islePoints,radius=radius)
 
     if isle.is_valid and not any(isle.intersects(i) for i in islands) and not isle.intersects(corridor):
       islands.append(isle)
 
   return MultiPolygon(islands), curve
 
-def _get_end_polygon(end: Point, radius: float):
-  '''
-    Returns a regular 16-gon around end, with the given radius.
-  '''
-  end = sgeom.Point(*end)
-  end = end.buffer(radius, quad_segs=4)
-  return end
-
 def new_environment(boundary, min_border_dist, max_curvature,
                     num_path_points=5, num_islands=6, 
-                    corridor_width=3.5, end_radius = 5) -> Environment:
+                    corridor_width=3.5, end_radius = 5,
+                    scenario = None) -> Environment:
   '''
     Generate a new environment, including a free corridor and non-overlapping islands.
     The free corridor guarantees a navigable path, though simpler paths may exist.
@@ -304,9 +204,14 @@ def new_environment(boundary, min_border_dist, max_curvature,
       min_border_dist: Avoids generating start, end and mid-points within 
         this distance to the boundary
       max_curvature: Free corridor has a curvature of at most `max_curvature`.
+      scenario: Allows for specific island setups, guaranteeing a certain property. 
+        May ignore other parameters.
+        - None: Default island generation, randomly placed, no overlaps, free corridor.
+        - `blocking`: Places a single island on a straight line between start and end.
     Returns:
       A pre-filled `Environment` object.
   '''
+    
   #Inner box for points
   point_boundary = np.array([
     boundary[0] + min_border_dist,
@@ -324,38 +229,178 @@ def new_environment(boundary, min_border_dist, max_curvature,
   #Repack boundary into a polygon.
   boxboundary = box(*boundary[0], *boundary[1])
 
+    
   #Bigger boundary so some islands can be outside.
   islandBoundary = (boundary - boundary.mean(axis=0)) * 1.5 + boundary.mean(axis=0)
 
-  valid_corridor, tries = False, 0
-  while not valid_corridor:
-    # Get n points for a path
-    points = generate_points(num_path_points, point_boundary)
+  #One island blocking the path.
+  if scenario == "blocking":
+    points = generate_points(2, point_boundary)
     # Pick them in an useful order 
-    points = projection_sort(points)
-    start, end = points[0], points[-1]
-    #Interpolate them, this is the path center
-    spline = interpolate(points)
-    #Make the path into a Polygon with sufficient width
-    corridor = get_corridor(spline, 500, corridor_width * 0.5)
+    start, end = points[0], points[1]
+    direction = end - start
+    path_len = np.linalg.norm(end - start)
 
-    valid_corridor = (
-      corridor.within(boxboundary) and
-      _get_max_curvature(spline) < max_curvature
-    )
-    tries += 1
-    if tries % 1000 == 0:
-      print(f"Corridor generation took {tries} attempts!")
-    if tries > 10000:
-      raise RuntimeError("Corridor took too long to generate, aborting.")
-  #Create non-overlapping islands outside of the corridor.
-  islands, _ = generate_islands(num_islands,corridor, islandBoundary)
+    #Island points.
+    u1 = np.random.uniform(0.25, 0.4)
+    u2 = np.random.uniform(0.6, 0.75)
+    pair = np.array([
+      start + u1 * direction,
+      start + u2 * direction
+    ])
+    radius = np.random.uniform(0.1, 0.2) * path_len
+    while True:
+      islands, _ = island(pair, radius)
+      if islands.is_valid:
+        break
+    corridor = Polygon()
+  
+  #Normal island generation. Creates random non-overlapping islands and
+  #a free corridor with a constrained curvature.
+  if scenario is None:
+    valid_corridor, tries = False, 0
+    while not valid_corridor:
+      # Get n points for a path
+      points = generate_points(num_path_points, point_boundary)
+      # Pick them in an useful order 
+      points = projection_sort(points)
+      start, end = points[0], points[-1]
+      #Interpolate them, this is the path center
+      spline = interpolate(points)
+      #Make the path into a Polygon with sufficient width
+      corridor = get_corridor(spline, 500, corridor_width * 0.5)
+
+      valid_corridor = (
+        corridor.within(boxboundary) and
+        _get_max_curvature(spline) < max_curvature
+      )
+      tries += 1
+      if tries % 1000 == 0:
+        print(f"Corridor generation took {tries} attempts!")
+      if tries > 10000:
+        raise RuntimeError("Corridor took too long to generate, aborting.")
+    #Create non-overlapping islands outside of the corridor.
+    islands, _ = generate_islands(num_islands, corridor, islandBoundary)
+
+
   #Target Area
-  end_poly = _get_end_polygon(end,end_radius)
+  end_poly = _get_end_polygon(end, end_radius)
   
   return Environment(islands, corridor, start, end_poly, boxboundary)
-#Different difficulty levels
-#Maybe a few hand picked ones.
+
+
+
+def island(pair, radius=10, n=60):
+  '''
+    Creates a random (often curved) island around pair, with the given radius.
+    Islands have a chance to contain self cuts, use shapely `is_valid` to filter out bad islands.
+  '''
+  #--Island Key Parameters--
+  alpha = np.random.uniform(0.3, 0.6) #Symmetry of island sides, 0 is indepedent, 1 is symmetrical
+  roughness = np.random.uniform(0.5, 0.8) # Amplitude of Noise
+  fpower = np.random.uniform(1.5, 1.9) # Smoothing out higher frequency noise
+  #--Create Island Backbone--
+  # First step is a curved spline from start to end, 
+  # for that we shift a midpoint away from the line defined by pair.
+  start, end = pair
+
+  direction = end - start
+  L = np.linalg.norm(direction)
+
+  normal = np.array([-direction[1], direction[0]]) / L
+
+  #u lets midpoint travel from A to B
+  u = np.random.uniform(0.2, 0.8)
+  #v shifts midpoint orthogonal AB
+  vmax = min(0.2, L/(2*radius)) # Prevent bad curvature causing self cuts.
+  v = np.random.uniform(-vmax, vmax)
+
+  midPoint = start + direction * u + normal * (radius * v)
+
+  #--Curvature Correction--
+  #Too steep curvature causes self cuts later on.
+  A = start
+  C = midPoint
+  B = end
+
+  tau = np.linalg.norm(C-A) / (np.linalg.norm(C-A) + np.linalg.norm(B-C))
+
+  a = (C - A - tau*(B-A)) / (tau*(tau-1))
+  b = (B-A) - a
+
+  t_star = -(a @ b) / (2 * (a @ a))
+  vel = 2*a*t_star + b
+
+  kappa_max = abs(b[0]*a[1] - b[1]*a[0]) * 2 / np.linalg.norm(vel)**3
+
+  if radius * kappa_max > 1:
+      scale = 0.8 / (radius * kappa_max)
+      v *= scale
+      midPoint = start + direction * u + normal * (radius * v)
+
+  #--Fourier-Noise island geography--
+  # The island shape is generated by surrounding a spline backbone 
+  # with a variable-width mantle. 
+  # The mantle thickness is controlled by a Fourier-based noise model, 
+  # producing irregular coastlines while preserving an overall 
+  # smooth island structure.
+  bspline = interpolate(np.array([start,midPoint,end]))
+  #Creating a mantle around the backbone
+  theta = np.linspace(0, 1, n)
+
+  #Island Noise Parameters
+  freqs = np.array([2,3,5,7,11,13])
+  amps = roughness / freqs**fpower
+
+  #Offset for each sine curve
+  phases1 = np.random.random(len(freqs)) * 2*np.pi
+  phases2 = np.random.random(len(freqs)) * 2*np.pi
+
+  angles = freqs[:,None]*theta*2*np.pi
+
+  noise1 = np.sin(angles + phases1[:,None])
+  noise2 = np.sin(angles + phases2[:,None])
+  # Taper for smooth wrap around
+  noise_taper = np.sqrt(np.sin(np.pi * theta))
+  #"Reverse" Fourier-Transform, overlap several sine's
+  r1    = radius * noise_taper * (1 + (amps[:,None] * noise1).sum(axis=0))
+
+  r_new = radius * noise_taper * (1 + (amps[:,None] * noise2).sum(axis=0))
+  
+  # Partial correlation of r1 and r2, to weakly couple both island sides.
+  r2 = alpha * r1 + (1-alpha) * r_new
+
+  #Cap R to alleviate Self-Cut island slightly.
+  r_cap = 1.5 * radius
+  r1 = np.minimum(r1, r_cap)
+  r2 = np.minimum(r2, r_cap)
+
+  curve = bspline(theta)
+  tangent = bspline.derivative()(theta)
+  normals = np.column_stack((-tangent[:,1], tangent[:,0]))
+  normals /= np.linalg.norm(normals, axis=1)[:,None]
+
+  #Island halves left and right of the spline, connected via taper.
+  left  = curve + r1[:,None] * normals
+  right = curve - r2[:,None] * normals
+
+  points = np.vstack((left, right[::-1]))
+
+  polygon = Polygon(points)
+
+  #Random rotation of the entire angle
+  angle = np.random.uniform(0, 360)
+  polygon = rotate(polygon, angle, origin='centroid')
+
+  return polygon, curve
+
+def _get_end_polygon(end: Point, radius: float):
+  '''
+    Returns a regular 16-gon around end, with the given radius.
+  '''
+  end = sgeom.Point(*end)
+  end = end.buffer(radius, quad_segs=4)
+  return end
 
 def _get_max_curvature(spline: BSpline, samples: int = 10_000) -> float:
     """
