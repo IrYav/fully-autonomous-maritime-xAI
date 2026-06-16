@@ -5,7 +5,7 @@ from matplotlib.figure import Figure
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
   QApplication, QButtonGroup, QCheckBox, QDoubleSpinBox, QFormLayout,
-  QHBoxLayout, QLabel, QRadioButton, QWidget, QVBoxLayout, QPushButton,
+  QHBoxLayout, QLabel, QRadioButton, QTabWidget, QWidget, QVBoxLayout, QPushButton,
   QSizePolicy, QSlider, QTableWidget, QTableWidgetItem
   )
 from PySide6.QtGui import QImage, QPixmap
@@ -18,6 +18,7 @@ from shapely.plotting import plot_polygon, plot_line
 
 from Simulation.Auxilaries.auxiliaries import SimulationState
 from Simulation.Environment.agent import Action, get_ship_polygon
+from Simulation.Visualization.right_tabs import ImageView, StateVector
 
 
 class EnvironmentViewer(QWidget):
@@ -130,97 +131,42 @@ class EnvironmentViewer(QWidget):
       self.visibility_boxes[name] = box
   
   def _setup_right_half(self, layout):
-    self.local_view_layout = QVBoxLayout()
+    #Move tabs to an external file.
+    self.tabs = QTabWidget()
 
-    self.obs_title = QLabel("Obstacles")
-    self.end_title = QLabel("Goal")
-    self.ship_title = QLabel("Ship")
-    self.obs_label = QLabel()
-    self.end_label = QLabel()
-    self.ship_label = QLabel()
+    self.local_view  = ImageView(["obstacles", "goal", "ship"])
+    self.global_view = ImageView(["islands",   "goal", "lview"])
+    self.state_vector = StateVector()
 
-    self.obs_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    self.end_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    self.ship_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    self.obs_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    self.end_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    self.ship_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-    self.obs_label.setSizePolicy(
-      QSizePolicy.Policy.Expanding,
-      QSizePolicy.Policy.Expanding,
-    )
-    self.end_label.setSizePolicy(
-      QSizePolicy.Policy.Expanding,
-      QSizePolicy.Policy.Expanding,
-    )
-    self.ship_label.setSizePolicy(
-      QSizePolicy.Policy.Expanding,
-      QSizePolicy.Policy.Expanding,
+    self.tabs.addTab(
+      self.local_view,
+      "Local View"
     )
 
-    self.local_view_layout.addStretch(1)
-
-    #Local views
-    self.local_view_layout.addWidget(self.obs_label,10)
-    self.local_view_layout.addWidget(self.obs_title)
-    self.local_view_layout.addWidget(self.end_label,10)
-    self.local_view_layout.addWidget(self.end_title)
-    self.local_view_layout.addWidget(self.ship_label,10)
-    self.local_view_layout.addWidget(self.ship_title)
-
-    #State vector
-    self.debug_table = QTableWidget()
-    self.debug_table.setColumnCount(2)
-    self.debug_table.setHorizontalHeaderLabels(
-      ["Variable", "Value"]
+    self.tabs.addTab(
+      self.global_view,
+      "Global View"
     )
-    self.debug_table.setEditTriggers(
-      QTableWidget.NoEditTriggers
+
+    self.tabs.addTab(
+      self.state_vector,
+      "State"
     )
-    self.local_view_layout.addWidget(self.debug_table,30)
 
-    self.local_view_layout.addStretch(1)
-
-    layout.addLayout(self.local_view_layout)
-
-
+    layout.addWidget(self.tabs)
   # ---------- Public API ----------
   def set_sim_state(self, sim_state : SimulationState):
     self.sim_state = sim_state
     self._render()
 
   def set_lviews(self, obs: np.ndarray):
-    '''
-    obs:
-      Boolean tensor of shape (3, rows, cols)
-    '''
-    labels = [
-      self.obs_label,
-      self.end_label,
-      self.ship_label,
-    ]
-    for label, mask in zip(labels, obs):
-      mask = mask.astype(np.uint8)
+    self.local_view.set_views(obs)
 
-      rows, cols = mask.shape
+  def set_gviews(self, obs: np.ndarray):
+    self.global_view.set_views(obs)
 
-      qimg = QImage(
-        mask.data,
-        cols,
-        rows,
-        cols,
-        QImage.Format.Format_Grayscale8,
-      )
-
-      pix = QPixmap.fromImage(qimg)
-
-      pix = pix.scaled(
-        label.size(),
-        Qt.AspectRatioMode.KeepAspectRatio,
-      )
-
-      label.setPixmap(pix)
+  def set_state_vector(self, data: dict):
+    self.state_vector.set_state(data)
 
   def add_main_button(self, label, callback):
     btn = QPushButton(label)
@@ -276,18 +222,6 @@ class EnvironmentViewer(QWidget):
     self._draw_trajectory(ship_path)
     self.canvas.draw()
 
-  def update_debug_table(self, data: dict):
-    self.debug_table.setRowCount(len(data))
-
-    for row, (key, value) in enumerate(data.items()):
-      self.debug_table.setItem(
-        row, 0,
-        QTableWidgetItem(str(key))
-      )
-      self.debug_table.setItem(
-        row, 1,
-        QTableWidgetItem(str(f"{value:.6g}"))
-      )
   # ---------- Rendering ----------
   def _render(self):
     if self.sim_state.env is None or self.sim_state.mesh is None:
