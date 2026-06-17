@@ -25,6 +25,7 @@ class SimulationConfig:
   ship_params: ShipParams
   lview_size: np.ndarray
   lview_res: np.ndarray
+  gview_res: np.ndarray
   h: float | None = None
   dt: float = 5.0
   max_steps: int | None = None
@@ -73,5 +74,6 @@ sim_config = SimulationConfig(
   boundary = np.array([[-2500, -2500], [2500, 2500]], dtype=float),
   ship_params = ferry(),
   lview_size = np.array([600,600]), 
-  lview_res = np.array([64,64])
+  lview_res = np.array([64,64]),
+  gview_res = np.array([64,64]),
   )

@@ -8,7 +8,7 @@ from stable_baselines3 import PPO
 from PySide6.QtCore import QTimer
 
 from Agent.Observation.observation import build_observation, get_posgrad_alignment
-from Agent.Observation.rasterize import get_local_view
+from Agent.Observation.rasterize import get_local_view, get_global_view
 from Simulation.Environment.harmonic import HarmonicField
 from Simulation.Visualization.visualization import EnvironmentViewer
 from Simulation.Auxilaries.auxiliaries import SimulationState
@@ -29,7 +29,7 @@ class BaseController:
     self.config = config
     self.sim_state = None
     self.lview = None
-
+    self.gview = None
   def new_training_instance(self, num_islands = 15, scenario = None):
     ship_width = self.config.ship_params.width
     ship_len = self.config.ship_params.length
@@ -52,7 +52,10 @@ class BaseController:
     field = HarmonicField(mesh)
     ship_state = agent.get_start_state(env)
     ship = agent.Ship(ship_state, self.config.ship_params)
-    self.lview = get_local_view(env, ship, self.config.lview_size, self.config.lview_res)
+    self.lview = get_local_view( env, ship, 
+                                 self.config.lview_size, self.config.lview_res)
+    self.gview = get_global_view(env, ship, 
+                                 self.config.boundary, self.config.gview_res, self.config.lview_size)
     self.sim_state = SimulationState(env, mesh, field, ship)
 
 
@@ -67,10 +70,13 @@ class BaseController:
     newstate = agent.apply_trajectory(state, traj)
 
     ship.state = newstate
-    self.lview = get_local_view(env, ship, self.config.lview_size, self.config.lview_res)
+    self.lview = get_local_view( env, ship, 
+                                 self.config.lview_size, self.config.lview_res)
+    self.gview = get_global_view(env, ship, 
+                                 self.config.boundary, self.config.gview_res, self.config.lview_size)
     return ship_path, cols
 
-
+  
 class InteractiveController(BaseController):
   def __init__(self, config: SimulationConfig, model: PPO | None):
     super().__init__(config)
@@ -87,7 +93,8 @@ class InteractiveController(BaseController):
     super().new_training_instance()
     self.viewer.set_sim_state(self.sim_state)
     self.viewer.set_lviews(self.lview)
-    self.viewer.update_debug_table(self._get_state_dict())
+    self.viewer.set_gviews(self.gview)
+    self.viewer.set_state_vector(self._get_state_dict())
   
   def simulate_step(self, action, dt):
     ship_path, cols = super().simulate_step(action, dt)
@@ -100,7 +107,8 @@ class InteractiveController(BaseController):
 
     self.viewer.update_step(ship_path)
     self.viewer.set_lviews(self.lview)
-    self.viewer.update_debug_table(self._get_state_dict())
+    self.viewer.set_gviews(self.gview)
+    self.viewer.set_state_vector(self._get_state_dict())
     return ship_path, cols
 
   def simulate_manual_step(self):

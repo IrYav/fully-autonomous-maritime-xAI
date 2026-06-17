@@ -40,6 +40,8 @@ class StatsCallback(BaseCallback):
 
 #TODO Refactor, this is annoying to code and change
 #Probably iterating over two lists or something.
+#Probably can work over an auxiliary iterator function, that works via next or successor,
+#here it should ideally only do "Level up or not" logic. 
 def _get_difficulty(num_timesteps: int, success_count: int, curr_diff : int) -> tuple[tuple[int, str], bool]:
   if curr_diff == 0: 
     if success_count < 95:

@@ -10,6 +10,70 @@ from Simulation.Auxilaries.shapely_aux import extract_geometries
 from Simulation.Environment.agent import Ship, ShipState, get_ship_polygon
 from Simulation.Environment.environment import Environment
 
+def get_global_view(env: Environment, ship: Ship, 
+                    boundary: np.ndarray, resolution: np.ndarray,
+                    lview_size: np.ndarray, pixel_val = 255):
+  '''
+    Get a boundary sized render,
+    rasterized to the graphical target resolution[0] * resolution[1] (rows, cols)
+    Pixels are 0 iff empty, `pixel_val` otherwise.
+
+    That includes 
+    - scaling up/down,
+    - discretizing,
+    - flipping y axis,
+    - swapping coordinate ordering.
+    Out:
+      A (3, resolution[0], resolution[1]) Numpy array, containing the following images:
+      - Islands
+      - End-Polygon
+      - The local-view cutout
+  '''
+
+  #Boundary is the input space. We want:
+  #boundary intersection islands (boundary obstacle is not included)
+  #boundary intersection end
+  #
+  pos = ship.state.position
+  heading = ship.state.heading #Radian
+  p1, p2 = pos - lview_size/2, pos + lview_size/2
+  pos = shapely.Point(pos)
+  rows, cols = resolution
+
+  #Get a box centered on ship
+  lview = box(*p1,*p2)
+
+  #Align it with the ship
+  lview = rotate(lview, heading, pos, True)
+
+  #Empty view
+  poly_boundary = box(*boundary[0],*boundary[1])
+
+  #Extract global views
+  islands  = poly_boundary.intersection(env.islands)
+  end_poly = poly_boundary.intersection(env.end_poly)
+  lview    = poly_boundary.intersection(lview)
+
+  #Prepare for rasterization, still using mathematical references.
+  target_box = np.array([
+      [-0.5, -0.5],
+      [cols - 0.5, rows - 0.5],
+  ])
+
+  #Switching to image coordinates
+  islands  = map_box_coordinates(islands, boundary, target_box)
+  end_poly = map_box_coordinates(end_poly, boundary, target_box)
+  lview    = map_box_coordinates(lview, boundary, target_box)
+
+  isl_mask   = rasterize(islands, resolution)
+  end_mask   = rasterize(end_poly, resolution)
+  lview_mask = rasterize(lview, resolution)
+
+  return np.stack([
+    isl_mask,
+    end_mask,
+    lview_mask,
+  ], axis=0).astype(np.uint8) * pixel_val
 
 def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution: np.ndarray, pixel_val = 255):
   '''
@@ -22,6 +86,11 @@ def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution: n
     - discretizing,
     - flipping y axis,
     - swapping coordinate ordering.
+    Out:
+      A (3, resolution[0], resolution[1]) Numpy array, containing the following images:
+      - Obstacles (Islands and Boundary)
+      - End-Polygon
+      - The ship
   '''
   pos = ship.state.position
   heading = ship.state.heading #Radian
@@ -40,7 +109,7 @@ def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution: n
   end_poly = window.intersection(env.end_poly)
   ship_poly = get_ship_polygon(ship)
 
-  if(not window.covers(ship_poly)):
+  if not window.covers(ship_poly):
     print(f"Ship: {ship_poly}")
     print(f"Window: {window}")
     print(f"Ship part outside of window: {ship_poly.difference(window)}")
@@ -57,6 +126,7 @@ def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution: n
       [-0.5, -0.5],
       [cols - 0.5, rows - 0.5],
   ])
+  #Switching to image coordinates
   obstacles = map_box_coordinates(obstacles, source_box, target_box)
   end_poly  = map_box_coordinates(end_poly , source_box, target_box)
   ship_poly = map_box_coordinates(ship_poly, source_box, target_box)
