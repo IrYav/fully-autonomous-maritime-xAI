@@ -1,4 +1,4 @@
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QSize, QTimer, Qt
 from PySide6.QtWidgets import (
   QAbstractItemView, QLabel, QTableWidgetItem, QVBoxLayout,
   QSizePolicy, QTableWidget, QWidget
@@ -7,38 +7,67 @@ from PySide6.QtGui import QImage, QPixmap
 
 import numpy as np
 
+_center_alignment = None
+
+class PixLabel(QLabel):
+  '''
+    QLabel but keeps aspect ratio and retains sharp edges.
+  '''
+  def __init__(self):
+    super().__init__()
+    self._pixmap = None
+
+  def setPixmap(self, pixmap : QPixmap):
+    self._pixmap = pixmap
+    self.setMinimumSize(self._pixmap.size())
+    self._update_pixmap()
+  
+  def resizeEvent(self, event):
+    super().resizeEvent(event)
+    self._update_pixmap()
+
+  def _update_pixmap(self):
+    if self._pixmap is None:
+      return
+
+    super().setPixmap(
+      self._pixmap.scaled(
+        self.size(),
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.FastTransformation,
+      )
+    )
 
 class ImagePanel(QWidget):
   def __init__(self, title: str):
     super().__init__()
 
     self.title_label = QLabel(title)
-    self.image_label = QLabel()
+    self.pix_label = PixLabel()
 
+    policy = self.sizePolicy()
+    policy.setHeightForWidth(True)
+
+    self.setSizePolicy(policy)
     self.title_label.setAlignment(
       Qt.AlignmentFlag.AlignCenter
     )
 
-    self.image_label.setAlignment(
+    self.pix_label.setAlignment(
       Qt.AlignmentFlag.AlignCenter
-    )
-
-    self.image_label.setSizePolicy(
-      QSizePolicy.Policy.Expanding,
-      QSizePolicy.Policy.Expanding,
     )
 
     layout = QVBoxLayout(self)
 
-    layout.addWidget(self.image_label, 10)
+    layout.addWidget(self.pix_label, 1)
     layout.addWidget(self.title_label)
 
   def set_pixmap(self, pixmap):
-    self.image_label.setPixmap(pixmap)
+    self.pix_label.setPixmap(pixmap)
 
   def set_title(self, title: str):
     self.title_label.setText(title)
-    
+  
 class ImageView(QWidget):
   def __init__(self, image_names: list[str]):
     super().__init__()
@@ -50,13 +79,12 @@ class ImageView(QWidget):
       for name in image_names
     }
 
-    self.content_layout.addStretch(1)
+    self.content_layout.addStretch()
 
     for panel in self.panels.values():
-      self.content_layout.addWidget(panel, 10)
+      self.content_layout.addWidget(panel, 1)
 
-    self.content_layout.addStretch(1)
-
+    self.content_layout.addStretch()
   def set_views(self, images: np.ndarray):
     '''
     images:
@@ -90,12 +118,6 @@ class ImageView(QWidget):
 
       pix = QPixmap.fromImage(qimg)
 
-      pix = pix.scaled(
-        panel.image_label.size(),
-        Qt.AspectRatioMode.KeepAspectRatio,
-        Qt.TransformationMode.FastTransformation,
-      )
-
       panel.set_pixmap(pix)
 
 
@@ -108,7 +130,6 @@ class StateVector(QTableWidget):
     self.setHorizontalHeaderLabels(
       ["Variable", "Value"]
     )
-
     self.setEditTriggers(
       QAbstractItemView.EditTrigger.NoEditTriggers
     )
@@ -130,7 +151,7 @@ class StateVector(QTableWidget):
 
 def _pretty_str(text: object) -> str:
   '''
-    Slightly prettier revealed strings, 
+    Slightly prettier visually represented strings, 
     e.g., `image_view` becomes `Image View`
   '''
   return str(text).replace("_", " ").title()
