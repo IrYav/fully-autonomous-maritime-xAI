@@ -34,6 +34,8 @@ class ShipEnv(gym.Env):
     self.difficulty = (0,)
 
     self.image_size = self.sim_config.lview_res[0]
+    self.gimage_size = self.sim_config.gview_res[0]
+
     self.net_config = get_net_conf(self.sim_config)
 
     self.grad_align = []
@@ -45,6 +47,13 @@ class ShipEnv(gym.Env):
         low=0,
         high=255,
         shape=(3, self.image_size, self.image_size),
+        dtype=np.uint8,
+      ),
+
+      "gimage": spaces.Box(
+        low=0,
+        high=255,
+        shape=(3, self.gimage_size, self.gimage_size),
         dtype=np.uint8,
       ),
 

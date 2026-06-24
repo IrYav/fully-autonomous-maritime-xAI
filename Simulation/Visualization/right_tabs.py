@@ -1,13 +1,11 @@
-from PySide6.QtCore import QSize, QTimer, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
   QAbstractItemView, QLabel, QTableWidgetItem, QVBoxLayout,
-  QSizePolicy, QTableWidget, QWidget
+  QTableWidget, QWidget
   )
 from PySide6.QtGui import QImage, QPixmap
 
 import numpy as np
-
-_center_alignment = None
 
 class PixLabel(QLabel):
   '''
@@ -119,7 +117,6 @@ class ImageView(QWidget):
       pix = QPixmap.fromImage(qimg)
 
       panel.set_pixmap(pix)
-
 
 class StateVector(QTableWidget):
   def __init__(self):

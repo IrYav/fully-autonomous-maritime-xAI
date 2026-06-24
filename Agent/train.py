@@ -11,7 +11,7 @@ from Simulation.Auxilaries.sim_config import sim_config
 #Gym Environment
 env = ShipEnv(sim_config)
 
-instance_name = "less_entrophy_bigger_batches2"
+instance_name = "05ablated_gview/run1"
 #Add custom logging
 callback = StatsCallback()
 
@@ -46,7 +46,7 @@ model = PPO(
   # ----------------------------------------------
 
   verbose=1,
-  tensorboard_log=f"./models/{instance_name}/",
+  tensorboard_log=f"./experiments/{instance_name}/",
 )
 # model = PPO.load(
 #     "ppo_ship.zip",
@@ -57,15 +57,15 @@ model = PPO(
 # Train
 # --------------------------------------------------
 try:
-  for i in range(15):
+  for i in range(25):
     model.learn(
       total_timesteps=100_000,
       reset_num_timesteps=False,
       callback=callback,
     )
 
-    model.save(f"./models/{instance_name}/ppo_ship_{model.num_timesteps}")
+    model.save(f"./experiments/{instance_name}/ppo_ship_{model.num_timesteps}")
 except KeyboardInterrupt:
   pass
 finally:
-  model.save(f"./models/{instance_name}/ppo_ship")
+  model.save(f"./experiments/{instance_name}/ppo_ship")

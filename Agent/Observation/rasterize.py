@@ -29,7 +29,11 @@ def get_global_view(env: Environment, ship: Ship,
       - End-Polygon
       - The local-view cutout
   '''
-
+  #DEBUGGING
+  return np.zeros(
+    (3, resolution[0], resolution[0]),
+    dtype=np.uint8,
+  )
   #Boundary is the input space. We want:
   #boundary intersection islands (boundary obstacle is not included)
   #boundary intersection end

@@ -67,8 +67,8 @@ def build_mesh(pd: PreparedDomain, verbose = False):
   gmsh.model.mesh.generate(2)
 
   
-  gmsh.write("mesh.msh")
-  mesh = meshio.read("mesh.msh", file_format="gmsh")
+  gmsh.write("mesh1.msh")
+  mesh = meshio.read("mesh1.msh", file_format="gmsh")
 
   gmsh.finalize()
   return mesh

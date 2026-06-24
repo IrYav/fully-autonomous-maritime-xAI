@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
   from Controller.controller import BaseController
 
-from Agent.Observation.rasterize import get_local_view
+from Agent.Observation.rasterize import get_global_view, get_local_view
 from Simulation.Auxilaries.auxiliaries import SimulationState
 from Simulation.Auxilaries.sim_config import SimulationConfig
 
@@ -17,19 +17,15 @@ from Simulation.Auxilaries.sim_config import SimulationConfig
 def build_observation(controller : BaseController, debugging=False):
   env = controller.sim_state.env
   ship = controller.sim_state.ship 
-  #Global View:
-  #TODO
-  # global_view = get_global_view(env, ship, gsize, gres)
+  sim_config = controller.config
 
-  #Local View:
-  sim_config : SimulationConfig = controller.config
-  size, res = sim_config.lview_size, sim_config.lview_res
-  local_view = get_local_view(env, ship, size, res)
+  local_view = controller.lview
+  global_view = controller.gview
 
   map_min = sim_config.boundary[0]
   map_size = sim_config.boundary[1] - sim_config.boundary[0]
 
-  #State Vector:
+  #--Normalizing the State Vector--
   # Normalized to [-1, 1]
   end_pos_norm = np.asarray(
     (env.end_poly.centroid.coords[0] - map_min) / map_size
@@ -49,6 +45,7 @@ def build_observation(controller : BaseController, debugging=False):
     - heading
   )
   
+  #--Constructing the observation--
   state_dict = {
     "ship_x_norm": ship_pos_norm[0],
     "ship_y_norm": ship_pos_norm[1],
@@ -74,6 +71,7 @@ def build_observation(controller : BaseController, debugging=False):
     state_obs = state_dict
   return {
     "image": local_view,
+    "gimage" : global_view,
     "state": state_obs,
   }
 
