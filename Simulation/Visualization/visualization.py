@@ -261,18 +261,14 @@ class EnvironmentViewer(QWidget):
     self.ax.set_ylabel("Distance (100 m)")
 
   def _draw_mesh(self):
-    mesh = self.sim_state.mesh
+    mesh = self.sim_state.mesh.mesh_tri
     self._remove_artist("mesh")
 
-    points = mesh.points[:, :2]
-    triangles = mesh.cells_dict["triangle"]
-
     triang = mtri.Triangulation(
-      points[:, 0],
-      points[:, 1],
-      triangles
+        *mesh.p,
+        mesh.t.T,
     )
-
+    
     self.artists["mesh"] = self.ax.triplot(triang, linewidth=0.5, color="gray")
    
   def _draw_potential(self, stride=5):
@@ -464,6 +460,8 @@ class EnvironmentViewer(QWidget):
       print(f"  Edge ({i}, {j}): {label}")
   
   def on_click(self, event):
+    #TODO doesnt work
+    return
     if event.inaxes != self.ax:
       return
 

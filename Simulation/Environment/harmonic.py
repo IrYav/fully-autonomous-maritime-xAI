@@ -2,10 +2,12 @@ import numpy as np
 import numpy.typing as npt
 import matplotlib.tri as mtri
 from collections import defaultdict
-from meshio import Mesh
 from skfem import Basis, MeshTri, asm, solve, condense
 from skfem.element import ElementTriP1
 from skfem.models.poisson import laplace
+
+from Simulation.Environment.mesh import BuiltMesh
+
 
 class HarmonicField:
   mesh: MeshTri
@@ -15,42 +17,28 @@ class HarmonicField:
   u: np.ndarray
   edge_labels: dict[frozenset[int], str]
   
-  def __init__(self, gmsh_mesh: Mesh, bc: list[tuple[npt.NDArray[np.int_], float]]  | None = None):
+  def __init__(self, mesh: BuiltMesh):
     '''
       Creates the harmonic field on the mesh, given the boundary conditions.
       Currently only accepts dirichlet boundary conditions.
       The harmonic potential is approximated using first-order (P1)
       Lagrange finite elements on a triangular mesh.
       Args:
-        gmsh_mesh: The mesh to solve with.
-        bc: List of (node_indices, bc_value)
-          Currently only Dirichlet boundary conditions. 
-          Extracts via `get_boundary_conditions` if `None`
+        mesh: A `BuiltMesh` object to solve the harmonic field on.
       Returns:
         A HarmonicField, satisfying the boundary conditions.
     '''
 
-    if bc is None:
-      bc = self.get_boundary_conditions(gmsh_mesh)
-    # --- Mesh conversion ---
-    points = np.ascontiguousarray(
-        gmsh_mesh.points[:, :2].T
-    )
-
-    triangles = np.ascontiguousarray(
-        gmsh_mesh.cells_dict["triangle"].T
-    )
-
-    self.mesh = MeshTri(points,triangles)
+    self.mesh = mesh.mesh_tri
 
     # --- Boundary topology ---
-    self.edge_labels = self._extract_edge_labels(gmsh_mesh)
+    self.edge_labels = mesh.edge_labels
 
     # --- FEM system ---
     A, b_vec, basis = self._build_system(self.mesh)
 
     # --- Solve Dirichlet problem ---
-    self.u = self._solve_dirichlet(A, b_vec, bc, A.shape[0])
+    self.u = self._solve_dirichlet(A, b_vec, mesh.boundary_conditions,)
 
     # --- Triangle locator ---
     self.tri = mtri.Triangulation(
@@ -63,62 +51,8 @@ class HarmonicField:
     # --- Gradient (P1 → constant per triangle) ---
     interp = basis.interpolate(self.u)
     self.grad = interp.grad[:, :, 0]
-  @staticmethod
-  def get_boundary_conditions(mesh: Mesh):
-    bc = []
 
-    id_to_name = {
-      data[0]: name
-      for name, data in mesh.field_data.items()
-    }
 
-    for cells, phys in zip(mesh.cells, mesh.cell_data["gmsh:physical"]):
-      if cells.type != "line":
-        continue
-
-      lines = cells.data
-
-      for group_id in np.unique(phys):
-        name = id_to_name.get(group_id, None)
-        if name is None:
-          continue
-
-        nodes = np.unique(lines[phys == group_id].ravel())
-
-        if name.startswith("island_") or name == "outer":
-          bc.append((nodes, 0.0))
-        elif name == "end":
-          bc.append((nodes, 1.0))
-
-    return bc
-  
-  @staticmethod
-  def _extract_edge_labels(gmsh_mesh: Mesh) -> dict[frozenset[int], str]:
-    edge_labels = {}
-
-    # Mapping: physical id → name
-    id_to_name = {
-      data[0]: name
-      for name, data in gmsh_mesh.field_data.items()
-    }
-
-    for cells, phys in zip(gmsh_mesh.cells, gmsh_mesh.cell_data["gmsh:physical"]):
-      if cells.type != "line":
-        continue
-
-      lines = cells.data  # shape (n_lines, 2)
-
-      for line, group_id in zip(lines, phys):
-        name = id_to_name.get(group_id, None)
-        if name is None:
-          continue
-
-        i, j = int(line[0]), int(line[1])
-        key = frozenset((i, j))
-
-        edge_labels[key] = name
-
-    return edge_labels
   
   @staticmethod
   def _build_system(mesh):
@@ -128,8 +62,8 @@ class HarmonicField:
     return A, b, basis
   
   @staticmethod
-  def _solve_dirichlet(A, b, bc, n_dofs):
-    x = np.zeros(n_dofs)
+  def _solve_dirichlet(A, b, bc,):
+    x = np.zeros(A.shape[0])
     dirichlet_nodes = []
 
     for nodes, value in bc:
