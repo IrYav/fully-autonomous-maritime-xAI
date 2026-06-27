@@ -135,7 +135,6 @@ def _apply_distance_field(label_to_lines, h, h_max = None, h_min = None, d_max =
 
   gmsh.model.mesh.field.setAsBackgroundMesh(th)
 
-@staticmethod
 def _extract_edge_labels(lookup) -> dict[frozenset[int], str]:
   """
   Maps each boundary edge of the MeshTri to its physical group label.
