@@ -8,7 +8,7 @@ from stable_baselines3 import PPO
 from PySide6.QtCore import QTimer
 
 from Agent.Observation.observation import build_observation, get_posgrad_alignment
-from Agent.Observation.rasterize import get_local_view, get_global_view
+from Agent.Observation.rasterize import get_local_view, get_global_view, update_local_view
 from Simulation.Environment.harmonic import HarmonicField
 from Simulation.Visualization.visualization import EnvironmentViewer
 from Simulation.Auxilaries.auxiliaries import SimulationState
@@ -59,7 +59,8 @@ class BaseController:
     self.sim_state = SimulationState(env, mesh, field, ship)
 
 
-    
+  from line_profiler import profile
+  @profile  
   def simulate_step(self, action: agent.Action, dt):
     ship, env = self.sim_state.ship, self.sim_state.env
     state, params = ship.state, ship.params
@@ -70,7 +71,7 @@ class BaseController:
     newstate = agent.apply_trajectory(state, traj)
 
     ship.state = newstate
-    self.lview = get_local_view( env, ship, 
+    update_local_view(self.lview, env, ship, 
                                  self.config.lview_size, self.config.lview_res)
     self.gview = get_global_view(env, ship, 
                                  self.config.boundary, self.config.gview_res, self.config.lview_size)

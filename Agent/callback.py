@@ -5,16 +5,25 @@ class StatsCallback(BaseCallback):
     return True
   
   def _on_rollout_end(self):
-    env = self.training_env.envs[0].unwrapped
-
+    #Attributes collected over all environments.
+    results = self.training_env.get_attr("results")
+    difficulty = self.training_env.get_attr("difficulty")
+    difficulty_num = difficulty[0][0]
     #Logging
     outcomes = ["Truncated", 
                 "Success", 
                 "Crashed into island", 
                 "Left map"]
     
-    freq = Counter(env.results)
-    n = len(env.results)
+    #Frequencies of certain events (e.g, Success) collected.
+    all_results = []
+
+    for env_results in results:
+        all_results.extend(env_results)
+
+    freq = Counter(all_results)
+    n = len(all_results)
+
     for outcome in outcomes:
       self.logger.record(
         f"custom/{outcome}",
@@ -22,21 +31,17 @@ class StatsCallback(BaseCallback):
       )
 
     #Curriculum Learning
-    difficulty, new_diff = _get_difficulty(self.num_timesteps, freq["Success"], env.difficulty[0])
-    if new_diff: 
-      freq.clear()
-      env.results.clear()
+    new_diff, diff_changed = _get_difficulty(self.num_timesteps, freq["Success"], difficulty_num)
+    if diff_changed:    
+      #Set difficulty for all envs
+      self.training_env.env_method("clear_results")
+      self.training_env.set_attr("difficulty", new_diff)
 
-    self.logger.record("custom/difficulty",difficulty[0])
 
-    for env in self.training_env.envs:
-      env.unwrapped.difficulty = difficulty
+    #Record numerical difficulty
+    self.logger.record("custom/difficulty",new_diff[0])
 
-  # def _on_training_start(self):
-  #   difficulty = _get_difficulty(self.num_timesteps)
 
-  #   for env in self.training_env.envs:
-  #     env.unwrapped.difficulty = difficulty
 
 #TODO Refactor, this is annoying to code and change
 #Probably iterating over two lists or something.

@@ -6,15 +6,16 @@ from skfem import Basis, MeshTri, asm, solve, condense
 from skfem.element import ElementTriP1
 from skfem.models.poisson import laplace
 
+import math
 from Simulation.Environment.mesh import BuiltMesh
 
 
 class HarmonicField:
   mesh: MeshTri
   tri: mtri.Triangulation
-  finder: mtri.TriFinder
   grad: np.ndarray
   u: np.ndarray
+  finder: mtri.TriFinder
   edge_labels: dict[frozenset[int], str]
   
   def __init__(self, mesh: BuiltMesh):
@@ -47,7 +48,6 @@ class HarmonicField:
       self.mesh.t.T
     )
     self.finder = self.tri.get_trifinder()
-
     # --- Gradient (P1 → constant per triangle) ---
     interp = basis.interpolate(self.u)
     self.grad = interp.grad[:, :, 0]
@@ -80,12 +80,13 @@ class HarmonicField:
 
   def gradient_at_(self, position: np.ndarray, normalized=True) -> np.ndarray:
     tri_id = self.finder(*position)
+    _ = None
     gradient = self.grad[:, tri_id]
 
     if not normalized:
       return gradient
-
-    norm = np.linalg.norm(gradient)
+    gx, gy = gradient
+    norm = math.sqrt(gx * gx + gy * gy)
     
     if norm == 0:
       return np.zeros_like(gradient)

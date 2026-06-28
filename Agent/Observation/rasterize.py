@@ -145,9 +145,51 @@ def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution: n
     ship_mask,
   ], axis=0).astype(np.uint8) * pixel_val
 
-def rasterize(geom: BaseGeometry, resolution):
+def update_local_view(out: np.ndarray, env: Environment, ship: Ship, size: np.ndarray, resolution: np.ndarray, pixel_val = 255):
   '''
-    Rasterizes the areal part of the geometry into a binary mask
+    Does the same as `get_local_view`, but doesn't update the constant ship layer.
+    Furthermore changes are in-place.
+  '''
+  pos = ship.state.position
+  heading = ship.state.heading #Radian
+  p1, p2 = pos - size/2, pos + size/2
+  pos = shapely.Point(pos)
+  rows, cols = resolution
+
+  #Get a box centered on ship
+  window = box(*p1,*p2)
+
+  #Align it with the ship
+  window = rotate(window, heading, pos, True)
+
+  #Extract local views
+  obstacles = window.intersection(env.islands).union(window.difference(env.boundary))
+  end_poly  = window.intersection(env.end_poly)
+  
+  #Rotate back
+  obstacles = rotate(obstacles, -heading, pos, True)
+  end_poly  = rotate(end_poly , -heading, pos, True)
+
+  #Prepare for rasterization, still using mathematical references.
+  source_box = (p1,p2)
+  target_box = np.array([
+      [-0.5, -0.5],
+      [cols - 0.5, rows - 0.5],
+  ])
+  #Switching to image coordinates
+  obstacles = map_box_coordinates(obstacles, source_box, target_box)
+  end_poly  = map_box_coordinates(end_poly , source_box, target_box)
+
+  rasterize_into(out[0], obstacles, resolution)
+  rasterize_into(out[1], end_poly , resolution)
+  
+  return
+
+
+
+def rasterize_into(out: np.ndarray, geom: BaseGeometry, resolution):
+  '''
+    Rasterizes the areal part of the geometry into a the given binary mask `out`
     of shape `resolution`.
 
     A pixel is `True` iff it is considered occupied by the geometry
@@ -156,6 +198,8 @@ def rasterize(geom: BaseGeometry, resolution):
     Uses graphical indexing, hence 
       `rows, cols = resolution`
     Args:
+      out:
+        A numpy array of size `resolution` to write the result into. Contents are irrelevant.
       geom:
         Any geometry to rasterize, draws nothing if geom.area is too small.
         Only draws polygons contained in geom, omitting the rest.
@@ -163,12 +207,11 @@ def rasterize(geom: BaseGeometry, resolution):
         rows, cols of the window cutout to rasterize on.
         Any polygon parts outside of rectangle from (0,0) to (rows,cols) are omitted.
   '''
-  rows, cols = resolution
-  mask = np.zeros((rows, cols), dtype=bool)
+  out.fill(False)
 
   #Return 0 mask, because there is (basically) nothing.
   if geom.area < 1e-12:
-    return mask
+    return out
   
   #We can only render polygons one by one.
   polys = extract_geometries(geom, ["Polygon"])
@@ -189,13 +232,18 @@ def rasterize(geom: BaseGeometry, resolution):
 
   #Collect all positive pixels, we have a pixel, if we have any polygon there.
   for e in exs:
-    mask |= ski.draw.polygon2mask(resolution,e)
+    out |= ski.draw.polygon2mask(resolution,e)
 
   #Remove holes, we only keep pixels that have no hole
   for i in ins:
-    mask &= ~ski.draw.polygon2mask(resolution,i)
+    out &= ~ski.draw.polygon2mask(resolution,i)
 
-  return mask
+  return
+
+def rasterize(geom: BaseGeometry, resolution):
+  out = np.zeros(resolution, dtype=bool)
+  rasterize_into(out, geom, resolution)
+  return out
 
 def map_box_coordinates(geom: BaseGeometry, source_box: np.ndarray, target_box: np.ndarray, y_flip = True):
   '''

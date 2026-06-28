@@ -15,7 +15,9 @@ from Simulation.Environment.agent import Action
 from collections import deque
 
 
-
+#How many episodes are relevant for the curriculums difficulty changes.
+#May be slightly bigger.
+CURRICULUM_WINDOW = 100
 
 class ShipEnv(gym.Env):
 
@@ -39,7 +41,7 @@ class ShipEnv(gym.Env):
     self.net_config = get_net_conf(self.sim_config)
 
     self.grad_align = []
-    self.results = deque(maxlen=100)
+    self.results = deque(maxlen=(CURRICULUM_WINDOW + config.n_envs - 1) // config.n_envs)
 
     self.observation_space = spaces.Dict({
 
@@ -126,7 +128,7 @@ class ShipEnv(gym.Env):
       # harmonic field "flows" past islands, and hence progress rewards may 
       # sum up to multiples of the following factor, 
       # as a good path may be longer than the diagonal.
-      progress_reward *= 50
+      progress_reward *= 50 * 4
 
       # Store gradient quality (for logging)
       self.grad_align.append(alignment)
@@ -187,6 +189,10 @@ class ShipEnv(gym.Env):
     else:
       self.results.append("Left map")
 
+  def clear_results(self):
+    self.results.clear()
+
 @staticmethod
 def get_net_conf(sim_config: SimulationConfig) -> NetworkConfig:
   return NetworkConfig(sim_config.lview_res[0],11,2)
+

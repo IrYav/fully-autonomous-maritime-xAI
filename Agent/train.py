@@ -1,71 +1,86 @@
+#One thread per env.
+import os
+os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=4
+os.environ["OPENBLAS_NUM_THREADS"] = "1" # export OPENBLAS_NUM_THREADS=4 
+os.environ["MKL_NUM_THREADS"] = "1" # export MKL_NUM_THREADS=6
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1" # export VECLIB_MAXIMUM_THREADS=4
+os.environ["NUMEXPR_NUM_THREADS"] = "1" # export NUMEXPR_NUM_THREADS=6
+
 import numpy as np
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.monitor import Monitor
 
 from Agent.Wrappers.ship_wrapper import ShipEnv
 from Agent.callback import StatsCallback
 from Simulation.Auxilaries.sim_config import sim_config
-#from network import MaritimeCNN, NetworkConfig
 
-#Gym Environment
-env = ShipEnv(sim_config)
+# Checks for some errors
+check_env(ShipEnv(sim_config))
 
-instance_name = "05ablated_gview/run1"
-#Add custom logging
-callback = StatsCallback()
+if __name__ == "__main__":
 
-net_config = env.net_config
+  #Gym Environments
+  def make_env():
+    def _init():
+      return Monitor(ShipEnv(sim_config))
+    return _init
 
-# Optional but VERY useful early on
-check_env(env)
+  env = SubprocVecEnv([make_env() for _ in range(sim_config.n_envs)])
 
-model = PPO(
-  policy="MultiInputPolicy",
-  env=env,
 
-  # ----------------------------------------------  
-  # Learning
-  # ----------------------------------------------
+  instance_name = f"benchmark/envs_{sim_config.n_envs}"#"05ablated_gview/run1"
+  #Add custom logging
+  callback = StatsCallback()
 
-  learning_rate=1e-4,
-  n_steps=4096,
-  batch_size=128,
-  gamma=0.99,
-  gae_lambda=0.95,
+  model = PPO(
+    policy="MultiInputPolicy",
+    env=env,
+    device="cuda",
+    # ----------------------------------------------  
+    # Learning
+    # ----------------------------------------------
 
-  # ----------------------------------------------
-  # PPO specifics
-  # ----------------------------------------------
+    learning_rate=1e-4,
+    n_steps=4096 // sim_config.n_envs,
+    batch_size=128,
+    gamma=0.99,
+    gae_lambda=0.95,
 
-  clip_range=0.2,
-  ent_coef=0.001,
+    # ----------------------------------------------
+    # PPO specifics
+    # ----------------------------------------------
 
-  # ----------------------------------------------
-  # Logging
-  # ----------------------------------------------
+    clip_range=0.2,
+    ent_coef=0.001,
 
-  verbose=1,
-  tensorboard_log=f"./experiments/{instance_name}/",
-)
-# model = PPO.load(
-#     "ppo_ship.zip",
-#     env=env
-# )
+    # ----------------------------------------------
+    # Logging
+    # ----------------------------------------------
 
-# --------------------------------------------------
-# Train
-# --------------------------------------------------
-try:
-  for i in range(25):
-    model.learn(
-      total_timesteps=100_000,
-      reset_num_timesteps=False,
-      callback=callback,
-    )
+    verbose=1,
+    tensorboard_log=f"./experiments/{instance_name}/",
+  )
+  # model = PPO.load(
+  #     "ppo_ship.zip",
+  #     env=env
+  # )
 
-    model.save(f"./experiments/{instance_name}/ppo_ship_{model.num_timesteps}")
-except KeyboardInterrupt:
-  pass
-finally:
-  model.save(f"./experiments/{instance_name}/ppo_ship")
+  # --------------------------------------------------
+  # Train
+  # --------------------------------------------------
+  try:
+    for i in range(1):
+      model.learn(
+        total_timesteps=25_000,
+        reset_num_timesteps=False,
+        callback=callback,
+      )
+
+      model.save(f"./experiments/{instance_name}/ppo_ship_{model.num_timesteps}")
+  except KeyboardInterrupt:
+    pass
+  finally:
+    model.save(f"./experiments/{instance_name}/ppo_ship")

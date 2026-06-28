@@ -5,6 +5,7 @@ import shapely.geometry as sgeom
 from scipy.interpolate import make_interp_spline, BSpline
 from shapely.geometry import LineString, Polygon, MultiPolygon, box
 from shapely.affinity import rotate
+from shapely import prepare
 
 Point  = np.ndarray  # shape (2,)
 Points = np.ndarray  # shape (n,2)
@@ -286,6 +287,10 @@ def new_environment(boundary, min_border_dist, max_curvature,
   #Target Area
   end_poly = _get_end_polygon(end, end_radius)
   
+  #Prepare relevant geometries for faster intersection checks (e.g., ship and island):
+  prepare(islands)
+  prepare(end_poly)
+
   return Environment(islands, corridor, start, end_poly, boxboundary)
 
 
@@ -394,7 +399,7 @@ def island(pair, radius=10, n=60):
 
   return polygon, curve
 
-def _get_end_polygon(end: Point, radius: float):
+def _get_end_polygon(end: Point, radius: float) -> Polygon:
   '''
     Returns a regular 16-gon around end, with the given radius.
   '''

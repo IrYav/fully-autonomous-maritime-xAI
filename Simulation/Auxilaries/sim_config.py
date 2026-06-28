@@ -29,6 +29,7 @@ class SimulationConfig:
   h: float | None = None
   dt: float = 5.0
   max_steps: int | None = None
+  n_envs: int = 1
 
   def __post_init__(self):
     if self.h is None:
@@ -76,4 +77,5 @@ sim_config = SimulationConfig(
   lview_size = np.array([600,600]), 
   lview_res = np.array([64,64]),
   gview_res = np.array([64,64]),
+  n_envs = 12,
   )
