@@ -1,4 +1,5 @@
 #One thread per env.
+import math
 import os
 os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=4
 os.environ["OPENBLAS_NUM_THREADS"] = "1" # export OPENBLAS_NUM_THREADS=4 
@@ -17,9 +18,15 @@ from Agent.Wrappers.ship_wrapper import ShipEnv
 from Agent.callback import StatsCallback
 from Simulation.Auxilaries.sim_config import sim_config
 
+ROLLOUT_SIZE = 4096
+BATCH_SIZE = 128
+
+n_steps = math.ceil(ROLLOUT_SIZE / sim_config.n_envs / 32) * 32
+
+
+
 # Checks for some errors
 check_env(ShipEnv(sim_config))
-
 if __name__ == "__main__":
 
   #Gym Environments
@@ -31,7 +38,7 @@ if __name__ == "__main__":
   env = SubprocVecEnv([make_env() for _ in range(sim_config.n_envs)])
 
 
-  instance_name = f"benchmark/envs_{sim_config.n_envs}"#"05ablated_gview/run1"
+  instance_name = "06quadrupled_progress_reward/run0"
   #Add custom logging
   callback = StatsCallback()
 
@@ -44,8 +51,8 @@ if __name__ == "__main__":
     # ----------------------------------------------
 
     learning_rate=1e-4,
-    n_steps=4096 // sim_config.n_envs,
-    batch_size=128,
+    n_steps=n_steps,
+    batch_size=BATCH_SIZE,
     gamma=0.99,
     gae_lambda=0.95,
 
@@ -72,9 +79,9 @@ if __name__ == "__main__":
   # Train
   # --------------------------------------------------
   try:
-    for i in range(1):
+    for i in range(20):
       model.learn(
-        total_timesteps=25_000,
+        total_timesteps=200_000,
         reset_num_timesteps=False,
         callback=callback,
       )
