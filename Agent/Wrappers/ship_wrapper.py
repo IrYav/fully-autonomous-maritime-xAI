@@ -192,6 +192,12 @@ class ShipEnv(gym.Env):
   def clear_results(self):
     self.results.clear()
 
+  def set_difficulty(self, difficulty):
+    self.difficulty = difficulty
+
+  def get_difficulty(self):
+    return self.difficulty
+
 @staticmethod
 def get_net_conf(sim_config: SimulationConfig) -> NetworkConfig:
   return NetworkConfig(sim_config.lview_res[0],11,2)

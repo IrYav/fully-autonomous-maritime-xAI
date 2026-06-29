@@ -38,7 +38,7 @@ if __name__ == "__main__":
   env = SubprocVecEnv([make_env() for _ in range(sim_config.n_envs)])
 
 
-  instance_name = "06quadrupled_progress_reward/run0"
+  instance_name = "07gview/run2"
   #Add custom logging
   callback = StatsCallback()
 
@@ -86,7 +86,7 @@ if __name__ == "__main__":
         callback=callback,
       )
 
-      model.save(f"./experiments/{instance_name}/ppo_ship_{model.num_timesteps}")
+      model.save(f"./experiments/{instance_name}/checkpoints/ppo_ship_{model.num_timesteps}")
   except KeyboardInterrupt:
     pass
   finally:

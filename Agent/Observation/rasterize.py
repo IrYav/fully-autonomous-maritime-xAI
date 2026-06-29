@@ -29,11 +29,6 @@ def get_global_view(env: Environment, ship: Ship,
       - End-Polygon
       - The local-view cutout
   '''
-  #DEBUGGING
-  return np.zeros(
-    (3, resolution[0], resolution[0]),
-    dtype=np.uint8,
-  )
   #Boundary is the input space. We want:
   #boundary intersection islands (boundary obstacle is not included)
   #boundary intersection end
@@ -78,6 +73,44 @@ def get_global_view(env: Environment, ship: Ship,
     end_mask,
     lview_mask,
   ], axis=0).astype(np.uint8) * pixel_val
+
+def update_global_view(out: np.ndarray, env: Environment, ship: Ship, 
+                    boundary: np.ndarray, resolution: np.ndarray,
+                    lview_size: np.ndarray, pixel_val = 255):  
+  '''
+    Does the same as `get_local_view`, but doesn't update the constant layers.
+    Furthermore changes are in-place.
+  '''
+  pos = ship.state.position
+  heading = ship.state.heading #Radian
+  p1, p2 = pos - lview_size/2, pos + lview_size/2
+  pos = shapely.Point(pos)
+  rows, cols = resolution
+
+  #Get a box centered on ship
+  lview = box(*p1,*p2)
+
+  #Align it with the ship
+  lview = rotate(lview, heading, pos, True)
+
+  #Empty global view
+  poly_boundary = box(*boundary[0],*boundary[1])
+
+  #Extract global views
+  lview    = poly_boundary.intersection(lview)
+
+  #Prepare for rasterization, still using mathematical references.
+  target_box = np.array([
+      [-0.5, -0.5],
+      [cols - 0.5, rows - 0.5],
+  ])
+
+  #Switching to image coordinates
+  lview = map_box_coordinates(lview, boundary, target_box)
+
+  rasterize_into(out[2], lview, resolution)
+
+  out[2] *= pixel_val
 
 def get_local_view(env: Environment, ship: Ship, size: np.ndarray, resolution: np.ndarray, pixel_val = 255):
   '''
