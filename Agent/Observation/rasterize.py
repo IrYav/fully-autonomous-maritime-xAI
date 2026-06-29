@@ -182,7 +182,8 @@ def update_local_view(out: np.ndarray, env: Environment, ship: Ship, size: np.nd
 
   rasterize_into(out[0], obstacles, resolution)
   rasterize_into(out[1], end_poly , resolution)
-  
+  out[0] *= pixel_val
+  out[1] *= pixel_val
   return
 
 
