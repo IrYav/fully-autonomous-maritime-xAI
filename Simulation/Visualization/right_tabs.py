@@ -92,9 +92,9 @@ class ImageView(QWidget):
     Channel i is mapped to the i-th panel.
     '''
 
-    if len(images) != len(self.panels):
+    if len(images) > len(self.panels):
       raise ValueError(
-        f"Expected {len(self.panels)} channels, "
+        f"Expected at most {len(self.panels)} channels, "
         f"got {len(images)}."
       )
 
