@@ -55,7 +55,7 @@ class ShipEnv(gym.Env):
       "gimage": spaces.Box(
         low=0,
         high=255,
-        shape=(3, self.gimage_size, self.gimage_size),
+        shape=(2, self.gimage_size, self.gimage_size),
         dtype=np.uint8,
       ),
 
@@ -83,7 +83,7 @@ class ShipEnv(gym.Env):
     self.controller.new_training_instance(*self.difficulty)
     self.steps = 0
     self.grad_align = []
-    obs = build_observation(self.controller)
+    obs = build_observation(self.controller, self.steps)
 
     info = {}
 
@@ -100,14 +100,14 @@ class ShipEnv(gym.Env):
 
     pos0 = self.controller.sim_state.ship.state.position
     #collisions include benign cases of reaching the end.
-    path, collisions = self.controller.simulate_step(action, self.sim_config.dt)
+    _, collisions = self.controller.simulate_step(action, self.sim_config.dt)
     pos1 = self.controller.sim_state.ship.state.position
 
     # ---------------------------------------------
     # Build observation
     # ---------------------------------------------
 
-    obs = build_observation(self.controller)
+    obs = build_observation(self.controller, self.steps)
 
     truncated = self.steps >= self.sim_config.max_steps
     terminated = len(collisions) > 0
@@ -115,8 +115,8 @@ class ShipEnv(gym.Env):
     if terminated or truncated:
       self._update_counter(collisions)
 
-    #Flat time penalty
-    reward = -0.05
+    #Linear time penalty per step.
+    reward = -0.5 * self.steps/self.sim_config.max_steps
 
     if collisions == []:
       alignment, dist = get_vectorgrad_alignment(self.controller.sim_state, pos0, pos1)
@@ -128,7 +128,7 @@ class ShipEnv(gym.Env):
       # harmonic field "flows" past islands, and hence progress rewards may 
       # sum up to multiples of the following factor, 
       # as a good path may be longer than the diagonal.
-      progress_reward *= 50 * 4
+      progress_reward *= 50 * 4 * 4
 
       # Store gradient quality (for logging)
       self.grad_align.append(alignment)
@@ -200,5 +200,5 @@ class ShipEnv(gym.Env):
 
 @staticmethod
 def get_net_conf(sim_config: SimulationConfig) -> NetworkConfig:
-  return NetworkConfig(sim_config.lview_res[0],11,2)
+  return NetworkConfig(sim_config.lview_res[0],12,2)
 

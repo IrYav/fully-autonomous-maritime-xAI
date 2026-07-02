@@ -73,8 +73,8 @@ class BaseController:
     ship.state = newstate
     update_local_view(self.lview, env, ship, 
                                 self.config.lview_size, self.config.lview_res)
-    update_global_view(self.gview, env, ship, 
-                                self.config.boundary, self.config.gview_res, self.config.lview_size)
+    # update_global_view(self.gview, env, ship, 
+    #                             self.config.boundary, self.config.gview_res, self.config.lview_size)
     return ship_path, cols
 
   
@@ -120,7 +120,7 @@ class InteractiveController(BaseController):
     if self.model is None:
       raise RuntimeError("Trying to use a non-existing model to generate a step")
       
-    obs = build_observation(self)
+    obs = build_observation(self, 0)
 
     action, _ = self.model.predict(obs, deterministic=True)
     action = agent.Action(*action)
@@ -160,5 +160,5 @@ class InteractiveController(BaseController):
     self.run_mode = RunMode.POLICY
 
   def _get_state_dict(self):
-    obs = build_observation(self, True)
+    obs = build_observation(self, 0, True)
     return obs["state"]

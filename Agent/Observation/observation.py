@@ -14,7 +14,7 @@ from Simulation.Auxilaries.auxiliaries import SimulationState
 from Simulation.Auxilaries.sim_config import SimulationConfig
 
 
-def build_observation(controller : BaseController, debugging=False):
+def build_observation(controller : BaseController, steps: int, debugging=False):
   env = controller.sim_state.env
   ship = controller.sim_state.ship 
   sim_config = controller.config
@@ -56,6 +56,8 @@ def build_observation(controller : BaseController, debugging=False):
     # 0 meaning no movement is more important.
     "velocity_norm": ship.state.velocity / ship.params.max_velocity,
 
+    "time_left_norm": steps/sim_config.max_steps,
+
     "rel_x_norm": rel_pos_norm[0],
     "rel_y_norm": rel_pos_norm[1],
 
@@ -88,7 +90,7 @@ def get_posgrad_alignment(sim_state: SimulationState) -> float:
   )
   return reward_alignment
 
-def get_vectorgrad_alignment(sim_state: SimulationState, pos0, pos1) -> float:
+def get_vectorgrad_alignment(sim_state: SimulationState, pos0, pos1) -> tuple[float,float]:
   delta_pos = pos1 - pos0
 
   dist = np.linalg.norm(delta_pos)

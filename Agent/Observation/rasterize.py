@@ -34,16 +34,16 @@ def get_global_view(env: Environment, ship: Ship,
   #boundary intersection end
   #
   pos = ship.state.position
-  heading = ship.state.heading #Radian
-  p1, p2 = pos - lview_size/2, pos + lview_size/2
+  # heading = ship.state.heading #Radian
+  # p1, p2 = pos - lview_size/2, pos + lview_size/2
   pos = shapely.Point(pos)
   rows, cols = resolution
 
   #Get a box centered on ship
-  lview = box(*p1,*p2)
+  # lview = box(*p1,*p2)
 
   #Align it with the ship
-  lview = rotate(lview, heading, pos, True)
+  # lview = rotate(lview, heading, pos, True)
 
   #Empty view
   poly_boundary = box(*boundary[0],*boundary[1])
@@ -51,7 +51,7 @@ def get_global_view(env: Environment, ship: Ship,
   #Extract global views
   islands  = poly_boundary.intersection(env.islands)
   end_poly = poly_boundary.intersection(env.end_poly)
-  lview    = poly_boundary.intersection(lview)
+  # lview    = poly_boundary.intersection(lview)
 
   #Prepare for rasterization, still using mathematical references.
   target_box = np.array([
@@ -62,16 +62,16 @@ def get_global_view(env: Environment, ship: Ship,
   #Switching to image coordinates
   islands  = map_box_coordinates(islands, boundary, target_box)
   end_poly = map_box_coordinates(end_poly, boundary, target_box)
-  lview    = map_box_coordinates(lview, boundary, target_box)
+  # lview    = map_box_coordinates(lview, boundary, target_box)
 
   isl_mask   = rasterize(islands, resolution)
   end_mask   = rasterize(end_poly, resolution)
-  lview_mask = rasterize(lview, resolution)
+  # lview_mask = rasterize(lview, resolution)
 
   return np.stack([
     isl_mask,
     end_mask,
-    lview_mask,
+    # lview_mask,
   ], axis=0).astype(np.uint8) * pixel_val
 
 def update_global_view(out: np.ndarray, env: Environment, ship: Ship, 
