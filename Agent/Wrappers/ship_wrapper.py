@@ -120,6 +120,11 @@ class ShipEnv(gym.Env):
 
     if collisions == []:
       alignment, dist = get_vectorgrad_alignment(self.controller.sim_state, pos0, pos1)
+      
+      # Alleviate reward loss for minor deviations from a good trajectory
+      # Increase reward loss for minor deviations from a bad trajectory
+      alignment = math.copysign(abs(alignment) ** 0.75, alignment)
+
       # How far do we travel, and how good is the alignment?
       progress_reward = alignment * dist
       # Scale progress bonus down with map size.
@@ -128,10 +133,12 @@ class ShipEnv(gym.Env):
       # harmonic field "flows" past islands, and hence progress rewards may 
       # sum up to multiples of the following factor, 
       # as a good path may be longer than the diagonal.
-      progress_reward *= 50 * 4 * 4
+      progress_reward *= 400
 
       # Store gradient quality (for logging)
       self.grad_align.append(alignment)
+
+
 
       reward += progress_reward
 

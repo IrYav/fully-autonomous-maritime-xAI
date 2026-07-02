@@ -38,7 +38,7 @@ if __name__ == "__main__":
   env = SubprocVecEnv([make_env() for _ in range(sim_config.n_envs)])
 
 
-  instance_name = "11halved_n_epochs/run0"
+  instance_name = "12softer_alignment_adherence/run0"
   #Add custom logging
   callback = StatsCallback()
 
@@ -51,7 +51,6 @@ if __name__ == "__main__":
     # ----------------------------------------------
 
     learning_rate=1e-4,
-    n_epochs=5,
     n_steps=n_steps,
     batch_size=BATCH_SIZE,
     gamma=0.99,
