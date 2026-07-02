@@ -4,6 +4,7 @@ import shapely.geometry as sgeom
 
 from scipy.interpolate import make_interp_spline, BSpline
 from shapely.geometry import LineString, Polygon, MultiPolygon, box
+from shapely.geometry import Point as ShapPoint
 from shapely.affinity import rotate
 from shapely import prepare
 
@@ -187,7 +188,7 @@ def generate_islands(count: int,
 
   return MultiPolygon(islands), curve
 
-def new_environment(boundary, min_border_dist, max_curvature,
+def new_environment(boundary, min_border_dist, max_curvature, start_radius = None,
                     num_path_points=5, num_islands=6, 
                     corridor_width=3.5, end_radius = 5,
                     scenario = None) -> Environment:
@@ -239,6 +240,8 @@ def new_environment(boundary, min_border_dist, max_curvature,
     points = generate_points(2, point_boundary)
     # Pick them in an useful order 
     start, end = points[0], points[1]
+    #Only the start needs to be free, a path is always given.
+    corridor = ShapPoint(start).buffer(start_radius,8)
     direction = end - start
     path_len = np.linalg.norm(end - start)
 
@@ -252,9 +255,8 @@ def new_environment(boundary, min_border_dist, max_curvature,
     radius = np.random.uniform(0.1, 0.2) * path_len
     while True:
       islands, _ = island(pair, radius)
-      if islands.is_valid:
+      if islands.is_valid and not corridor.intersects(islands):
         break
-    corridor = Polygon()
   
   #Normal island generation. Creates random non-overlapping islands and
   #a free corridor with a constrained curvature.
@@ -269,7 +271,7 @@ def new_environment(boundary, min_border_dist, max_curvature,
       #Interpolate them, this is the path center
       spline = interpolate(points)
       #Make the path into a Polygon with sufficient width
-      corridor = get_corridor(spline, 500, corridor_width * 0.5)
+      corridor = get_corridor(spline, 150, corridor_width * 0.5)
 
       valid_corridor = (
         corridor.within(boxboundary) and
@@ -280,6 +282,9 @@ def new_environment(boundary, min_border_dist, max_curvature,
         print(f"Corridor generation took {tries} attempts!")
       if tries > 10000:
         raise RuntimeError("Corridor took too long to generate, aborting.")
+      
+    #Add extra space for the ship spawn
+    corridor = corridor.union(ShapPoint(start).buffer(start_radius,8))
     #Create non-overlapping islands outside of the corridor.
     islands, _ = generate_islands(num_islands, corridor, islandBoundary)
 

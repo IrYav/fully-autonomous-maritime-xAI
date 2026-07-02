@@ -13,7 +13,7 @@ from Simulation.Environment.harmonic import HarmonicField
 from Simulation.Visualization.visualization import EnvironmentViewer
 from Simulation.Auxilaries.auxiliaries import SimulationState
 from Simulation.Auxilaries.sim_config import SimulationConfig
-import Simulation.Environment.environment as envi
+from Simulation.Environment.environment import new_environment
 import Simulation.Environment.mesh_prep as mesher_prep
 import Simulation.Environment.mesh as mesher
 import Simulation.Environment.agent as agent
@@ -38,7 +38,7 @@ class BaseController:
     #-----------------
     # Simulation Data
     #-----------------
-    env = envi.new_environment(
+    env = new_environment(
       self.config.boundary, 
       num_islands = num_islands, 
       end_radius = max(5 * self.config.h, 1.5 * ship_len),
@@ -46,6 +46,7 @@ class BaseController:
       min_border_dist = 1.5 * turning_radius,
       max_curvature = ship_kappa,
       scenario = scenario,
+      start_radius = ship_len * 2
     )
     mesh_raw = mesher_prep.prepare_domain(env.islands, env.end_poly, self.config.boundary, h=self.config.h)
     mesh = mesher.build_mesh(mesh_raw)
