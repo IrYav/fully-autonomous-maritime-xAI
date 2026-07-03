@@ -175,7 +175,15 @@ def generate_islands(count: int,
 
   #Generate and Validate
   while len(islands) < count:
-    islePoints = np.random.random((2,2)) * scale + boundary[0] #TODO: Enforce min distance later
+    #Early rejection of any base-points that are near guaranteed to become
+    #a base for an invalid island.
+    while True:
+      islePoints = np.random.random((2,2)) * scale + boundary[0] #TODO: Enforce min distance later
+      ls =  LineString(islePoints)
+      if ls.intersects(corridor) or any(ls.intersects(i) for i in islands):
+        continue
+      break
+
     radius = np.clip(
       np.random.uniform(0.2, 0.35) * np.linalg.norm(islePoints[1] - islePoints[0]),
       0.05 * np.mean(scale),
