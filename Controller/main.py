@@ -1,11 +1,8 @@
 from stable_baselines3 import PPO
 
 from Simulation.Auxilaries.sim_config import sim_config
-from Controller.controller import InteractiveController
+from Controller.interactive_controller import InteractiveController
 from pathlib import Path
-
-OPENBLAS_NUM_THREADS=1
-OMP_NUM_THREADS=1
 
 def main():
   try:
@@ -16,6 +13,7 @@ def main():
   # Initialize
   app = InteractiveController(sim_config, model)
   app.run()
+  app.close()
   return
 
 if __name__ == "__main__":

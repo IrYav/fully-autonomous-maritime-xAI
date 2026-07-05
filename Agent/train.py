@@ -25,10 +25,10 @@ n_steps = math.ceil(ROLLOUT_SIZE / sim_config.n_envs / 32) * 32
 
 
 
-# Checks for some errors
-check_env(ShipEnv(sim_config))
 if __name__ == "__main__":
-
+  # Checks for some errors
+  check_env(ShipEnv(sim_config))
+  
   #Gym Environments
   def make_env():
     def _init():
@@ -38,7 +38,7 @@ if __name__ == "__main__":
   env = SubprocVecEnv([make_env() for _ in range(sim_config.n_envs)])
 
 
-  instance_name = "12softer_alignment_adherence/run0"
+  instance_name = "-2"#13views_change/run0"
   #Add custom logging
   callback = StatsCallback()
 
@@ -79,7 +79,7 @@ if __name__ == "__main__":
   # Train
   # --------------------------------------------------
   try:
-    for i in range(20):
+    for i in range(3):
       model.learn(
         total_timesteps=200_000,
         reset_num_timesteps=False,

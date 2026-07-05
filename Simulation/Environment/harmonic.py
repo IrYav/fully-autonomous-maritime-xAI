@@ -15,7 +15,6 @@ class HarmonicField:
   tri: mtri.Triangulation
   grad: np.ndarray
   u: np.ndarray
-  finder: mtri.TriFinder
   edge_labels: dict[frozenset[int], str]
   
   def __init__(self, mesh: BuiltMesh):
@@ -47,7 +46,7 @@ class HarmonicField:
       self.mesh.p[1],
       self.mesh.t.T
     )
-    self.finder = self.tri.get_trifinder()
+    #self.finder = self.tri.get_trifinder()
     # --- Gradient (P1 → constant per triangle) ---
     interp = basis.interpolate(self.u)
     self.grad = interp.grad[:, :, 0]
@@ -79,7 +78,7 @@ class HarmonicField:
     return x_full
 
   def gradient_at_(self, position: np.ndarray, normalized=True) -> np.ndarray:
-    tri_id = self.finder(*position)
+    tri_id = self.tri.get_trifinder()(*position)
     _ = None
     gradient = self.grad[:, tri_id]
 
@@ -99,7 +98,7 @@ class HarmonicField:
 
     for _ in range(max_steps):
 
-      tri_id = self.finder(*pos)
+      tri_id = self.tri.get_trifinder()(*pos)
 
       if tri_id == -1:
         break
@@ -166,7 +165,7 @@ class HarmonicField:
           np.random.uniform(xmin, xmax),
           np.random.uniform(ymin, ymax)
         ])
-        if field.finder(*p) != -1:
+        if field.tri.get_trifinder()(*p) != -1:
           return p
       return None
 

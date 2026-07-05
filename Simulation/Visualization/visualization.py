@@ -404,7 +404,7 @@ class EnvironmentViewer(QWidget):
 
   def inspect_triangle(self, pos):
     field = self.sim_state.field
-    tri_id = field.finder(*pos)
+    tri_id = field.tri.get_trifinder()(*pos)
     if tri_id == -1:
       print("Outside mesh")
       return
@@ -471,7 +471,7 @@ class EnvironmentViewer(QWidget):
     field = self.sim_state.field
     pos = np.array([event.xdata, event.ydata])
 
-    tri_id = field.finder(*pos)
+    tri_id = field.tri.get_trifinder(*pos)
     if tri_id == -1:
       print("Outside mesh")
       return

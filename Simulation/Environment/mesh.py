@@ -16,14 +16,7 @@ class BuiltMesh:
 
   edge_labels: dict[frozenset[int], str]
 
-def build_mesh(pd: PreparedDomain, verbose = False):
-
-  gmsh.initialize()
-
-  if not verbose:
-    gmsh.option.setNumber("General.Verbosity", 1)
-
-  gmsh.model.add("mesh")
+def build_mesh(pd: PreparedDomain):
 
   point_cache = {}
   label_to_lines = defaultdict(list)
@@ -51,6 +44,9 @@ def build_mesh(pd: PreparedDomain, verbose = False):
 
     loop = gmsh.model.geo.addCurveLoop(lines)
     return loop
+  
+  gmsh.clear()
+  gmsh.model.add("mesh")
 
   # --- Build all rings ---
   loops = []
@@ -82,7 +78,7 @@ def build_mesh(pd: PreparedDomain, verbose = False):
   node_tags, node_coords, _ = gmsh.model.mesh.getNodes()
   points = np.asarray(node_coords).reshape(-1, 3)
 
-  types, element_tags, element_nodes = gmsh.model.mesh.getElements(dim=2)
+  _, _, element_nodes = gmsh.model.mesh.getElements(dim=2)
 
   triangles = np.asarray(element_nodes[0]).reshape(-1, 3)
   
@@ -103,7 +99,6 @@ def build_mesh(pd: PreparedDomain, verbose = False):
   boundary_conds = _get_dirichlet_bcs(lookup)
   edge_labels = _extract_edge_labels(lookup)
 
-  gmsh.finalize()
   return BuiltMesh(mesh_tri, boundary_conds, edge_labels)
 
 def _apply_distance_field(label_to_lines, h, h_max = None, h_min = None, d_max = None):

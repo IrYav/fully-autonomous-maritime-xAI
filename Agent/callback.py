@@ -1,14 +1,21 @@
 from stable_baselines3.common.callbacks import BaseCallback
 from collections import Counter
+from Agent.Curriculum.curriculum import Difficulty
+from Agent.Curriculum.curriculum_instance import build_curriculum
+
 class StatsCallback(BaseCallback):
+  def __init__(self, verbose: int = 0):
+    super().__init__(verbose)
+    self.curriculum = build_curriculum()
+    self.difficulty = self.curriculum.get_start_diff()
+
   def _on_step(self):
     return True
   
   def _on_rollout_end(self):
     #Attributes collected over all environments.
     results = self.training_env.get_attr("results")
-    difficulty = self.training_env.env_method("get_difficulty")
-    difficulty_num = difficulty[0][0]
+
     #Logging
     outcomes = ["Truncated", 
                 "Success", 
@@ -30,35 +37,13 @@ class StatsCallback(BaseCallback):
         freq[outcome] / n if n > 0 else 0
       )
 
-    #Curriculum Learning
-    new_diff, diff_changed = _pick_difficulty(self.num_timesteps, freq["Success"], difficulty_num)
-    if diff_changed:    
+    #If we have enough samples and a large friction of them is successful, we graduate.
+    if n >= 100 and self.curriculum.passed(self.difficulty, freq["Success"]):
+      self.difficulty = self.curriculum.next_difficulty(self.difficulty)
       #Set difficulty for all envs
       self.training_env.env_method("clear_results")
-      self.training_env.env_method("set_difficulty", new_diff)
+      self.training_env.env_method("set_difficulty", self.difficulty)
 
     #Record numerical difficulty
-    self.logger.record("custom/difficulty",new_diff[0])
-
-#TODO Refactor, this is annoying to code and change
-#Probably iterating over two lists or something.
-#Probably can work over an auxiliary iterator function, that works via next or successor,
-#here it should ideally only do "Level up or not" logic. 
-def _pick_difficulty(num_timesteps: int, success_count: int, curr_diff : int) -> tuple[tuple[int, str], bool]:
-  if curr_diff == 0: 
-    if success_count < 95:
-      diff = 0, None
-    else:
-      diff = 1, "blocking"
-  elif curr_diff == 1:
-    if success_count < 90:
-      diff = 1,"blocking"
-    else:
-      diff = 2, None
-  else:
-    if success_count < 80 or curr_diff == 15: #Too bad or max diff
-      diff = curr_diff, None
-    else:
-      diff = curr_diff + 1, None
-
-  return diff, diff[0] != curr_diff
+    self.logger.record("custom/difficulty",self.difficulty.index)
+    self.logger.record("custom/num_results", n)

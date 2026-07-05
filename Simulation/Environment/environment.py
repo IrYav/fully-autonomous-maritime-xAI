@@ -8,6 +8,8 @@ from shapely.geometry import Point as ShapPoint
 from shapely.affinity import rotate
 from shapely import prepare
 
+from Agent.Curriculum.curriculum import ScenarioType
+
 Point  = np.ndarray  # shape (2,)
 Points = np.ndarray  # shape (n,2)
 Boundary = np.ndarray # shape (2,2)
@@ -199,7 +201,7 @@ def generate_islands(count: int,
 def new_environment(boundary, min_border_dist, max_curvature, start_radius = None,
                     num_path_points=5, num_islands=6, 
                     corridor_width=3.5, end_radius = 5,
-                    scenario = None) -> Environment:
+                    scenario = ScenarioType.NONE) -> Environment:
   '''
     Generate a new environment, including a free corridor and non-overlapping islands.
     The free corridor guarantees a navigable path, though simpler paths may exist.
@@ -244,7 +246,7 @@ def new_environment(boundary, min_border_dist, max_curvature, start_radius = Non
   islandBoundary = (boundary - boundary.mean(axis=0)) * 1.5 + boundary.mean(axis=0)
 
   #One island blocking the path.
-  if scenario == "blocking":
+  if scenario == ScenarioType.BLOCKING:
     points = generate_points(2, point_boundary)
     # Pick them in an useful order 
     start, end = points[0], points[1]
@@ -268,7 +270,7 @@ def new_environment(boundary, min_border_dist, max_curvature, start_radius = Non
   
   #Normal island generation. Creates random non-overlapping islands and
   #a free corridor with a constrained curvature.
-  if scenario is None:
+  if scenario is ScenarioType.NONE:
     valid_corridor, tries = False, 0
     while not valid_corridor:
       # Get n points for a path
@@ -293,6 +295,8 @@ def new_environment(boundary, min_border_dist, max_curvature, start_radius = Non
       
     #Add extra space for the ship spawn
     corridor = corridor.union(ShapPoint(start).buffer(start_radius,8))
+    #Prepare corridor so further intersection checks are cheap.
+    prepare(corridor)
     #Create non-overlapping islands outside of the corridor.
     islands, _ = generate_islands(num_islands, corridor, islandBoundary)
 
@@ -305,8 +309,6 @@ def new_environment(boundary, min_border_dist, max_curvature, start_radius = Non
   prepare(end_poly)
 
   return Environment(islands, corridor, start, end_poly, boxboundary)
-
-
 
 def island(pair, radius=10, n=60):
   '''

@@ -74,8 +74,8 @@ class SimulationConfig:
 sim_config = SimulationConfig(
   boundary = np.array([[-2500, -2500], [2500, 2500]], dtype=float),
   ship_params = ferry(),
-  lview_size = np.array([600,600]), 
+  lview_size = np.array([800,800]), 
   lview_res = np.array([64,64]),
-  gview_res = np.array([64,64]),
-  n_envs = 12,
+  gview_res = np.array([36,36]),
+  n_envs = 4,
   )

@@ -156,8 +156,7 @@ def get_start_state(env: Environment, start_vel = 0) -> ShipState:
   heading = np.arctan2(d[1], d[0])
 
   return ShipState(pos, heading, start_vel)
-from line_profiler import profile
-@profile
+
 def get_path(state: ShipState, traj: Trajectory, params: ShipParams, n_samples: int = 20) -> Polygon:
   '''
     Returns a polygon approximating the union over all ship positions along a given trajectory.

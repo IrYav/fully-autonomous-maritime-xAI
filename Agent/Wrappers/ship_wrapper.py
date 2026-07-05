@@ -5,10 +5,11 @@ import numpy as np
 
 from gymnasium import spaces
 
-from Agent.Observation.observation import build_observation, get_posgrad_alignment, get_vectorgrad_alignment
+from Agent.Curriculum.curriculum_instance import start_diff
+from Agent.Observation.observation import build_observation, get_vectorgrad_alignment
 from Agent.Observation.rasterize import get_local_view
 from Agent.network import NetworkConfig
-from Controller.controller import BaseController
+from Controller.MultiThread.buffered_controller import BufferedMTController
 from Simulation.Auxilaries.sim_config import SimulationConfig
 from Simulation.Environment.agent import Action
 
@@ -29,11 +30,11 @@ class ShipEnv(gym.Env):
     super().__init__()
 
 
-    self.controller = BaseController(config)
+    self.controller = BufferedMTController(config, start_diff(),4,2)
 
     self.sim_config = config
     
-    self.difficulty = (0,)
+    self.difficulty = start_diff()
 
     self.image_size = self.sim_config.lview_res[0]
     self.gimage_size = self.sim_config.gview_res[0]
@@ -80,7 +81,7 @@ class ShipEnv(gym.Env):
 
   def reset(self, seed=None, options=None):
     super().reset(seed=seed)
-    self.controller.new_training_instance(*self.difficulty)
+    self.controller.new_training_instance(self.difficulty)
     self.steps = 0
     self.grad_align = []
     obs = build_observation(self.controller, self.steps)
@@ -123,7 +124,7 @@ class ShipEnv(gym.Env):
       
       # Alleviate reward loss for minor deviations from a good trajectory
       # Increase reward loss for minor deviations from a bad trajectory
-      alignment = math.copysign(abs(alignment) ** 0.75, alignment)
+      #alignment = math.copysign(abs(alignment) ** 0.75, alignment)
 
       # How far do we travel, and how good is the alignment?
       progress_reward = alignment * dist
@@ -171,8 +172,7 @@ class ShipEnv(gym.Env):
   # =================================================
 
   def close(self):
-
-    pass
+    self.controller.close()
 
 
   def _print_ep_info(self, terminated, truncated, collisions):
