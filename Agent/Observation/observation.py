@@ -56,7 +56,7 @@ def build_observation(controller : BaseController, steps: int, debugging=False):
     # 0 meaning no movement is more important.
     "velocity_norm": ship.state.velocity / ship.params.max_velocity,
 
-    "time_left_norm": steps/sim_config.max_steps,
+    "time_elapsed_norm": steps/sim_config.max_steps,
 
     "rel_x_norm": rel_pos_norm[0],
     "rel_y_norm": rel_pos_norm[1],
