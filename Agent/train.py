@@ -38,7 +38,7 @@ if __name__ == "__main__":
   env = SubprocVecEnv([make_env() for _ in range(sim_config.n_envs)])
 
 
-  instance_name = "14halfLR/run0"
+  instance_name = "15adjustedReward/run0"
   #Add custom logging
   callback = StatsCallback()
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     # PPO specifics
     # ----------------------------------------------
 
-    clip_range=0.1,
+    clip_range=0.2,
     #ent_coef=0.001,
 
     # ----------------------------------------------
