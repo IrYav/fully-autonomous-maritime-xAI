@@ -18,7 +18,7 @@ from shapely.plotting import plot_polygon, plot_line
 
 from Simulation.Auxilaries.auxiliaries import SimulationState
 from Simulation.Environment.agent import Action, get_ship_polygon
-from Simulation.Visualization.right_tabs import ImageView, StateVector
+from Simulation.Visualization.RightHalf.views import ImageView, StateVector
 
 
 class EnvironmentViewer(QWidget):

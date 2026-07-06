@@ -38,7 +38,7 @@ if __name__ == "__main__":
   env = SubprocVecEnv([make_env() for _ in range(sim_config.n_envs)])
 
 
-  instance_name = "-2"#13views_change/run0"
+  instance_name = "14halfLR/run0"
   #Add custom logging
   callback = StatsCallback()
 
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     # Learning
     # ----------------------------------------------
 
-    learning_rate=1e-4,
+    learning_rate=2e-5,
     n_steps=n_steps,
     batch_size=BATCH_SIZE,
     gamma=0.99,
@@ -60,8 +60,8 @@ if __name__ == "__main__":
     # PPO specifics
     # ----------------------------------------------
 
-    clip_range=0.2,
-    ent_coef=0.001,
+    clip_range=0.1,
+    #ent_coef=0.001,
 
     # ----------------------------------------------
     # Logging
@@ -79,7 +79,7 @@ if __name__ == "__main__":
   # Train
   # --------------------------------------------------
   try:
-    for i in range(3):
+    for i in range(20):
       model.learn(
         total_timesteps=200_000,
         reset_num_timesteps=False,

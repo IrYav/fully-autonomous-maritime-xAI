@@ -77,5 +77,5 @@ sim_config = SimulationConfig(
   lview_size = np.array([800,800]), 
   lview_res = np.array([64,64]),
   gview_res = np.array([36,36]),
-  n_envs = 4,
+  n_envs = 8,
   )

@@ -38,7 +38,7 @@ class StatsCallback(BaseCallback):
       )
 
     #If we have enough samples and a large friction of them is successful, we graduate.
-    if n >= 100 and self.curriculum.passed(self.difficulty, freq["Success"]):
+    if n >= 100 and self.curriculum.passed(self.difficulty, freq["Success"] / n):
       self.difficulty = self.curriculum.next_difficulty(self.difficulty)
       #Set difficulty for all envs
       self.training_env.env_method("clear_results")
