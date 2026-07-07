@@ -117,7 +117,7 @@ class ShipEnv(gym.Env):
       self._update_counter(collisions)
 
     #Linear time penalty per step.
-    reward = -0.1 * self.steps/self.sim_config.max_steps
+    reward = -0.2 * self.steps/self.sim_config.max_steps
 
     if collisions == []:
       alignment, dist = get_vectorgrad_alignment(self.controller.sim_state, pos0, pos1)

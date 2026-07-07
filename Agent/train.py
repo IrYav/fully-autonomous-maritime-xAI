@@ -38,7 +38,7 @@ if __name__ == "__main__":
   env = SubprocVecEnv([make_env() for _ in range(sim_config.n_envs)])
 
 
-  instance_name = "17reward_change/run0"
+  instance_name = "18reward_change/run0"
   #Add custom logging
   callback = StatsCallback()
 
