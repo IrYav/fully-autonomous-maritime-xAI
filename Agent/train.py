@@ -9,7 +9,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1" # export NUMEXPR_NUM_THREADS=6
 
 import numpy as np
 
-from stable_baselines3 import PPO
+from stable_baselines3 import SAC
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
@@ -38,56 +38,53 @@ if __name__ == "__main__":
   env = SubprocVecEnv([make_env() for _ in range(sim_config.n_envs)])
 
 
-  instance_name = "15adjustedReward/run1"
+  instance_name = "SAC/00baseModel/run1"
   #Add custom logging
   callback = StatsCallback()
 
-  model = PPO(
+  model = SAC(
     policy="MultiInputPolicy",
     env=env,
     device="cuda",
-    # ----------------------------------------------  
-    # Learning
-    # ----------------------------------------------
 
-    learning_rate=2e-5,
-    n_steps=n_steps,
-    batch_size=BATCH_SIZE,
-    gamma=0.99,
-    gae_lambda=0.95,
+    # ------------------------------------------------
+    # Core SAC learning
+    # ------------------------------------------------
+    learning_rate=3e-4,
+    buffer_size=100_000,
+    learning_starts=10_000,
+    batch_size=256,
+    tau=0.005,
+    gamma=0.995,
 
-    # ----------------------------------------------
-    # PPO specifics
-    # ----------------------------------------------
+    # ------------------------------------------------
+    # SAC specifics
+    # ------------------------------------------------
+    train_freq=1,
+    gradient_steps=1,
+    ent_coef="auto",
+    # target_entropy="auto",
 
-    clip_range=0.2,
-    #ent_coef=0.001,
-
-    # ----------------------------------------------
+    # ------------------------------------------------
     # Logging
-    # ----------------------------------------------
-
+    # ------------------------------------------------
     verbose=1,
     tensorboard_log=f"./experiments/{instance_name}/",
   )
-  # model = PPO.load(
-  #     "ppo_ship.zip",
-  #     env=env
-  # )
 
   # --------------------------------------------------
   # Train
   # --------------------------------------------------
   try:
-    for i in range(20):
+    for i in range(10):
       model.learn(
         total_timesteps=200_000,
         reset_num_timesteps=False,
         callback=callback,
       )
 
-      model.save(f"./experiments/{instance_name}/checkpoints/ppo_ship_{model.num_timesteps}")
+      model.save(f"./experiments/{instance_name}/checkpoints/ship_{model.num_timesteps}")
   except KeyboardInterrupt:
     pass
   finally:
-    model.save(f"./experiments/{instance_name}/ppo_ship")
+    model.save(f"./experiments/{instance_name}/ship")
