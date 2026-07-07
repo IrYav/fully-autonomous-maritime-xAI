@@ -27,7 +27,7 @@ class SimulationConfig:
   lview_res: np.ndarray
   gview_res: np.ndarray
   h: float | None = None
-  dt: float = 2.5
+  dt: float = 5
   max_steps: int | None = None
   n_envs: int = 1
 
