@@ -58,8 +58,8 @@ class SimulationConfig:
     if required_vr > view_range:
       print("Ship may not have sufficient local view range allocated:")
       print(f"{turn_rad_dist} for turning.")
-      print(f"{velo_dist} for max velocity.")
-      print(f"{ship_nose_offset} for max velocity.")
+      print(f"+ {velo_dist} for max velocity.")
+      print(f"+ {ship_nose_offset} for the ship offset.")
       print("Yielding a required local view range of "
         "and compared to the actual local viewrange:")
       print(f"{required_vr} > {view_range}")
