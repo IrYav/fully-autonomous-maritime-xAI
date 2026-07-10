@@ -43,7 +43,10 @@ class StatsCallback(BaseCallback):
       #Set difficulty for all envs
       self.training_env.env_method("clear_results")
       self.training_env.env_method("set_difficulty", self.difficulty)
-
+      #SAC receives a distribution shock upon curriculum change.
+      #By emptying the buffer, we ensure that only up-to-date information
+      #gets processed into updates.
+      #self.model.replay_buffer.reset()
     #Record numerical difficulty
     self.logger.record("custom/difficulty",self.difficulty.index)
     self.logger.record("custom/num_results", n)

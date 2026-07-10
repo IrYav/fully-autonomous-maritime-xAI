@@ -38,7 +38,7 @@ if __name__ == "__main__":
   env = SubprocVecEnv([make_env() for _ in range(sim_config.n_envs)])
 
 
-  instance_name = "SAC/00baseModel/run1"
+  instance_name = "SAC/02different_start/run0"
   #Add custom logging
   callback = StatsCallback()
 
@@ -52,15 +52,15 @@ if __name__ == "__main__":
     # ------------------------------------------------
     learning_rate=3e-4,
     buffer_size=100_000,
-    learning_starts=10_000,
+    learning_starts=5_000,
     batch_size=256,
     tau=0.005,
-    gamma=0.995,
+    gamma=0.99,
 
     # ------------------------------------------------
     # SAC specifics
     # ------------------------------------------------
-    train_freq=1,
+    train_freq=4,
     gradient_steps=1,
     ent_coef="auto",
     # target_entropy="auto",
