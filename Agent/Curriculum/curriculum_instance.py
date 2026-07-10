@@ -2,13 +2,13 @@ from Agent.Curriculum.curriculum import Curriculum, Difficulty, GraduationCondit
 
 def build_curriculum():
   difficulties = [start_diff()]
-  #difficulties.append(_blocking_diff())
+  difficulties.append(_blocking_diff())
   difficulties.extend(_rest_diffs())
   difficulties.append(final_diff())
   return Curriculum(difficulties)
 
 def start_diff() -> Difficulty:
-  return _blocking_diff() #Difficulty(0,ScenarioType.NONE,GraduationCondition(0.95),0)
+  return Difficulty(0,ScenarioType.NONE,GraduationCondition(0.95),0)
 
 def final_diff() -> Difficulty:
   return Difficulty(15,ScenarioType.NONE,GraduationCondition(1.1), 15)
