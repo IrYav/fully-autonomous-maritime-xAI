@@ -257,8 +257,8 @@ class EnvironmentViewer(QWidget):
     )
 
     self.ax.set_aspect('equal', adjustable='box')
-    self.ax.set_xlabel("Distance (100 m)")
-    self.ax.set_ylabel("Distance (100 m)")
+    self.ax.set_xlabel("Distance in m")
+    self.ax.set_ylabel("Distance in m")
 
   def _draw_mesh(self):
     mesh = self.sim_state.mesh.mesh_tri
