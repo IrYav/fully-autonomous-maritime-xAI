@@ -38,7 +38,7 @@ if __name__ == "__main__":
   env = SubprocVecEnv([make_env() for _ in range(sim_config.n_envs)])
 
 
-  instance_name = "SAC/05lowerGamma/run0"
+  instance_name = "SAC/05lowerGamma/run1"
   #Add custom logging
   callback = StatsCallback()
 
@@ -76,7 +76,7 @@ if __name__ == "__main__":
   # Train
   # --------------------------------------------------
   try:
-    for i in range(10):
+    for i in range(14):
       model.learn(
         total_timesteps=200_000,
         reset_num_timesteps=False,
