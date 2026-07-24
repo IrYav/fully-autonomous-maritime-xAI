@@ -3,7 +3,7 @@
 from enum import Enum, auto
 import sys
 
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, SAC
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer
@@ -12,6 +12,8 @@ from Agent.Observation.observation import build_observation
 from Controller.controller import BaseController
 from Simulation.Auxilaries.sim_config import SimulationConfig
 from Simulation.Environment import agent
+from Simulation.Environment.environment import Environment
+from Simulation.Visualization.RightHalf.AdminTab.editor_controller import EditorController
 from Simulation.Visualization.visualization import EnvironmentViewer
 
 
@@ -20,11 +22,12 @@ class RunMode(Enum):
   POLICY = auto()
 
 class InteractiveController(BaseController):
-  def __init__(self, config: SimulationConfig, model: PPO | None):
+  def __init__(self, config: SimulationConfig, model: PPO | SAC | None):
 
     super().__init__(config)
     self.app = QApplication(sys.argv)
-    self.viewer = EnvironmentViewer()
+    self.ec = EditorController(self.new_training_instance)
+    self.viewer = EnvironmentViewer(self.ec)
     self.model = model
     self.run_timer = QTimer()
     self.run_timer.timeout.connect(self._timer_step)
@@ -32,13 +35,12 @@ class InteractiveController(BaseController):
     self._setup_buttons()
     self.new_training_instance()
 
-  def new_training_instance(self):
-    super().new_training_instance()
+  def new_training_instance(self, env: Environment | None = None):
+    super().new_training_instance(pre_made_env=env)
     self.viewer.set_sim_state(self.sim_state)
     self.viewer.set_lviews(self.lview)
     self.viewer.set_gviews(self.gview)
     self.viewer.set_state_vector(self._get_state_dict())
-  
   def simulate_step(self, action, dt):
     ship_path, cols = super().simulate_step(action, dt)
 

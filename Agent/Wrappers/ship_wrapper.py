@@ -129,7 +129,7 @@ class ShipEnv(gym.Env):
       # How far do we travel, and how good is the alignment?
       progress_reward = alignment * dist
       # Scale progress bonus down with map size.
-      progress_reward /= self.sim_config.map_diagonal()
+      progress_reward /= self.sim_config.map_diagonal
       # Weighting factor for following the harmonic field, for complex maps the 
       # harmonic field "flows" past islands, and hence progress rewards may 
       # sum up to multiples of the following factor, 

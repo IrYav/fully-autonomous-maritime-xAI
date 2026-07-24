@@ -65,11 +65,22 @@ class SimulationConfig:
       print(f"{required_vr} > {view_range}")
     return
 
+  @property
   def map_diagonal(self):
+    '''
+      Returns the length of the diagonal
+    '''
     return np.linalg.norm(
       self.boundary[1] - 
       self.boundary[0]
       )
+
+  @property
+  def map_center(self):
+    '''
+      Returns the center point of the map.
+    '''
+    return (self.boundary[0] + self.boundary[1]) / 2
 
 sim_config = SimulationConfig(
   boundary = np.array([[-2500, -2500], [2500, 2500]], dtype=float),

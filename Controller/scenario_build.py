@@ -4,25 +4,27 @@ from Agent.Curriculum.curriculum import Difficulty
 from Simulation.Auxilaries.sim_config import SimulationConfig
 from Simulation.Environment.harmonic import HarmonicField
 from Simulation.Environment.environment import Environment, new_environment
-import Simulation.Environment.mesh_prep as mesher_prep
-import Simulation.Environment.mesh as mesher
+from Simulation.Environment.mesh import build_mesh, BuiltMesh
+from Simulation.Environment.mesh_prep import prepare_domain
 
 # gmsh doesn't support multiple meshing instances within a single process.
 _GMSH_LOCK = threading.Lock()
 
-
-def _build_mesh_threadsafe(mesh_raw):
-  with _GMSH_LOCK:
-    return mesher.build_mesh(mesh_raw)
+def build_scenario_from_env(config: SimulationConfig, env: Environment):
+  '''
+    Add onto a pre-existing env, creating a full scenario 
+  '''
+  mesh, field = _mesh_field(config, env)
+  return env, mesh, field
 
 def build_scenario(
     config: SimulationConfig, 
     difficulty: Difficulty
-    ) -> tuple[Environment, mesher.BuiltMesh, HarmonicField]:
-  """
+    ) -> tuple[Environment, BuiltMesh, HarmonicField]:
+  '''
   Build a complete scenario:
     env, mesh, field
-  """
+  '''
 
   ship_width = config.ship_params.width
   ship_len = config.ship_params.length
@@ -40,7 +42,16 @@ def build_scenario(
     start_radius=ship_len * 2
   )
 
-  mesh_raw = mesher_prep.prepare_domain(
+  mesh, field = _mesh_field(config, env)
+
+  return env, mesh, field
+
+def _build_mesh_threadsafe(mesh_raw):
+  with _GMSH_LOCK:
+    return build_mesh(mesh_raw)
+
+def _mesh_field(config: SimulationConfig, env: Environment):
+  mesh_raw = prepare_domain(
     env.islands,
     env.end_poly,
     config.boundary,
@@ -49,5 +60,4 @@ def build_scenario(
 
   mesh = _build_mesh_threadsafe(mesh_raw)
   field = HarmonicField(mesh)
-
-  return env, mesh, field
+  return mesh, field

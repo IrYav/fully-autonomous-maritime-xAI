@@ -1,32 +1,40 @@
+from matplotlib.patches import PathPatch
 import numpy as np
 import matplotlib.tri as mtri
 from matplotlib.figure import Figure
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-  QApplication, QButtonGroup, QCheckBox, QDoubleSpinBox, QFormLayout,
-  QHBoxLayout, QLabel, QRadioButton, QTabWidget, QWidget, QVBoxLayout, QPushButton,
-  QSizePolicy, QSlider, QTableWidget, QTableWidgetItem
+  QButtonGroup, QCheckBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, 
+  QLabel, QRadioButton, QTabWidget, QWidget, QVBoxLayout, QPushButton, QSlider,
   )
-from PySide6.QtGui import QImage, QPixmap
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as Canvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT
-from shapely.plotting import plot_polygon, plot_line
-
+from shapely.plotting import plot_line, plot_polygon
+from shapely import affinity
 
 
 from Simulation.Auxilaries.auxiliaries import SimulationState
 from Simulation.Environment.agent import Action, get_ship_polygon
+from Simulation.Visualization.Mouse.mouse_tool import MouseTool
+from Simulation.Visualization.Mouse.mouse_tool_actions import MouseToolActions
+from Simulation.Visualization.RightHalf.AdminTab.editor_controller import EditorController
+from Simulation.Visualization.RightHalf.AdminTab.env_viewer import EditorTab
+from Simulation.Visualization.RightHalf.AdminTab.draft_model import Material
 from Simulation.Visualization.RightHalf.views import ImageView, StateVector
 
 
 class EnvironmentViewer(QWidget):
-  def __init__(self):
+  def __init__(self, ec: EditorController):
     super().__init__()
 
     # State
     self.sim_state : SimulationState = None
+    
+    #Render details for polygons
+    self._set_alphas()
+    self._set_colors()
 
     # Artists
     self.artists = {
@@ -46,6 +54,12 @@ class EnvironmentViewer(QWidget):
     self.canvas = Canvas(self.fig)
 
     self.toolbar = NavigationToolbar2QT(self.canvas, self)
+
+    #Central handling of mouse events within the canvas.
+    self.mouse: MouseTool
+    self.connect_mouse_tool(MouseTool())
+    self.tools = MouseToolActions(self.mouse)
+    self.set_editor_cont(ec)
 
     # Layout Areas
     self.button_layout = QHBoxLayout()
@@ -117,47 +131,57 @@ class EnvironmentViewer(QWidget):
     layout.addWidget(container)
   
   def _setup_visibility_controls(self, layout):
+    #Disable cluttering artists per default.
+    default_visible = {
+      "mesh": False,
+      "gradient": False,          # Quiver
+      "potential_fill": False,
+      "potential_contour": False,
+      "corridor": False,
+    }
+        
+
     self.visibility_boxes = {}
 
     for name in self.artists.keys():
       box = QCheckBox(name)
-      box.setChecked(True)
+      box.setChecked(default_visible.get(name, True))
 
       box.stateChanged.connect(
-        lambda _, n=name: self.toggle_artist(n)
+          lambda _, n=name: self.toggle_artist(n)
       )
 
       layout.addWidget(box)
       self.visibility_boxes[name] = box
   
   def _setup_right_half(self, layout):
-    #Move tabs to an external file.
-    self.tabs = QTabWidget()
 
-    self.local_view  = ImageView(["obstacles", "goal", "ship"])
-    self.global_view = ImageView(["islands",   "goal", "lview"])
+    self.tabs = QTabWidget()
+    #Input tabs
+    self.input_tab = QTabWidget()
+
+    self.tabs.addTab(self.input_tab, "Input")
+
+    self.local_view = ImageView(["obstacles", "goal", "ship"])
+    self.global_view = ImageView(["islands", "goal", "lview"])
     self.state_vector = StateVector()
 
-    self.tabs.addTab(
-      self.local_view,
-      "Local View"
-    )
+    self.input_tab.addTab(self.local_view, "Local View")
+    self.input_tab.addTab(self.global_view, "Global View")
+    self.input_tab.addTab(self.state_vector, "State")
 
-    self.tabs.addTab(
-      self.global_view,
-      "Global View"
-    )
-
-    self.tabs.addTab(
-      self.state_vector,
-      "State"
-    )
+    #Admin tabs
+    self.editor_tab = EditorTab(self.ec,self.tools, self)
+    self.tabs.addTab(self.editor_tab, "Env-Tools")
 
     layout.addWidget(self.tabs)
+
   # ---------- Public API ----------
   def set_sim_state(self, sim_state : SimulationState):
     self.sim_state = sim_state
+    self.ec.set_env(sim_state.env)
     self._render()
+    self._set_ax_lims()
 
   def set_lviews(self, obs: np.ndarray):
     self.local_view.set_views(obs)
@@ -167,6 +191,10 @@ class EnvironmentViewer(QWidget):
 
   def set_state_vector(self, data: dict):
     self.state_vector.set_state(data)
+
+  def set_editor_cont(self, ec: EditorController):
+    self.ec = ec
+    self.ec.changed.connect(self._draw_draft)
 
   def add_main_button(self, label, callback):
     btn = QPushButton(label)
@@ -222,12 +250,38 @@ class EnvironmentViewer(QWidget):
     self._draw_trajectory(ship_path)
     self.canvas.draw()
 
+  def update_draft(self):
+    '''
+      Redraw draft.
+    '''
+    self._draw_draft()
+    self.canvas.draw()
+  
+  def set_preview(self, patches: list[PathPatch]):
+    '''
+      Adds the patches to the current ax,
+      after deleting the old ones.
+
+      Can be called with `patches = []` to wipe the preview.
+    '''
+    self._remove_artist("Preview")
+    artists = []
+    for patch in patches:
+        self.ax.add_patch(patch)
+        artists.append(patch)
+
+    self.artists["Preview"] = artists
+    self.canvas.draw()
+
   # ---------- Rendering ----------
   def _render(self):
     if self.sim_state.env is None or self.sim_state.mesh is None:
       return
-
-    self._draw_environment()
+    
+    self._draw_boundary()
+    self._draw_corridor()
+    self._draw_draft()
+    self._set_axes()
     self._draw_mesh()
     self._draw_potential()
     self._draw_ship()
@@ -236,12 +290,25 @@ class EnvironmentViewer(QWidget):
 
     self.canvas.draw()
 
-  def _draw_environment(self):
-    env = self.sim_state.env
+  def _draw_draft(self):
+    #Delete all draft
+    for mat in Material:
+      self._remove_artist(mat)
+      self.artists[mat] = []
+    for ao in self.ec.draft:
+      self.artists[ao.material].append(
+        plot_polygon(
+          ao.polygon,
+          ax=self.ax,
+          alpha=self.alphas[ao.material],
+          color=self.colors[ao.material],
+          add_points=False
+        )
+      )
 
+  def _draw_corridor(self):
     self._remove_artist("corridor")
-    self._remove_artist("islands")
-
+    env = self.sim_state.env
     self.artists["corridor"] = plot_polygon(
       env.corridor,
       ax=self.ax,
@@ -249,16 +316,16 @@ class EnvironmentViewer(QWidget):
       add_points=False
     )
 
-    self.artists["islands"] = plot_polygon(
-      env.islands,
+  def _draw_boundary(self):
+    self._remove_artist("boundary")
+    env = self.sim_state.env
+    self.artists["boundary"] = plot_line(
+      env.boundary.exterior,
       ax=self.ax,
-      color="lightgreen",
+      color="darkgray",
+      alpha=0.5,
       add_points=False
     )
-
-    self.ax.set_aspect('equal', adjustable='box')
-    self.ax.set_xlabel("Distance in m")
-    self.ax.set_ylabel("Distance in m")
 
   def _draw_mesh(self):
     mesh = self.sim_state.mesh.mesh_tri
@@ -328,7 +395,7 @@ class EnvironmentViewer(QWidget):
     dx = g_norm[0]
     dy = g_norm[1]
 
-    #Quiver
+    #Quiver (little arrows)
     quiv = self.ax.quiver(cx, cy, dx, dy, scale=30)
     self.artists["gradient"] = quiv
 
@@ -355,9 +422,38 @@ class EnvironmentViewer(QWidget):
       add_points=False
     )
 
+  def _set_axes(self):
+    self.ax.set_aspect('equal', adjustable='box')
+    self.ax.set_xlabel("Distance in m")
+    self.ax.set_ylabel("Distance in m")
+
+  def _set_colors(self):
+    self.colors = {
+      Material.LAND: "#009E73",   # Bluish Green
+      Material.VOID: "#56B4E9",  # Sky Blue
+      Material.END: "#E69F00",    # Orange
+    }
+
+  def _set_alphas(self):
+    self.alphas = {
+      Material.LAND: 0.35,
+      Material.VOID: 0.7,
+      Material.END: 0.35,
+    }
+
+  def _set_ax_lims(self):
+    '''
+      Set the default view to slightly bigger than the boundary.
+    '''
+    boundary = self.sim_state.env.boundary
+    boundary = affinity.scale(boundary, 1.05, 1.05)
+    xmin, ymin, xmax, ymax = boundary.bounds
+    self.ax.set_xlim(xmin, xmax)
+    self.ax.set_ylim(ymin, ymax)
+
   # ---------- Utilities ----------
-  def _remove_artist(self, name):
-    artist = self.artists.get(name)
+  def _remove_artist(self, key):
+    artist = self.artists.get(key)
 
     if artist is None:
       return
@@ -372,7 +468,7 @@ class EnvironmentViewer(QWidget):
     else:
       artist.remove()
 
-    self.artists[name] = None
+    self.artists[key] = None
 
   def _apply_visibility_settings(self):
     for name in self.visibility_boxes:
@@ -391,12 +487,12 @@ class EnvironmentViewer(QWidget):
       for coll in artist.collections:
         coll.set_visible(visible)
 
-    # Listen von Artists
+    # Lists of artists
     elif isinstance(artist, list):
       for a in artist:
         a.set_visible(visible)
 
-    # Einzelartist
+    # Singleartist
     else:
       artist.set_visible(visible)
 
@@ -459,28 +555,46 @@ class EnvironmentViewer(QWidget):
 
       print(f"  Edge ({i}, {j}): {label}")
   
-  def on_click(self, event):
-    #TODO doesnt work
-    return
-    if event.inaxes != self.ax:
-      return
+  def connect_mouse_tool(self, mouse):
+    """
+    Connect a MouseController to the matplotlib canvas.
+    """
+    self.mouse = mouse
 
-    if event.xdata is None or event.ydata is None:
-      return
+    def to_pos(event):
+      if (
+        event.inaxes != self.ax or
+        event.xdata is None or
+        event.ydata is None
+      ):
+        return None
 
-    field = self.sim_state.field
-    pos = np.array([event.xdata, event.ydata])
+      return np.array([event.xdata, event.ydata])
 
-    tri_id = field.tri.get_trifinder(*pos)
-    if tri_id == -1:
-      print("Outside mesh")
-      return
+    def on_press(event):
+      if self.mouse is None:
+        return
 
-    print("\n--- CLICK ---")
-    self.inspect_triangle(pos)
+      pos = to_pos(event)
+      if pos is not None:
+        self.mouse.on_press(pos)
 
-    tri_nodes = field.mesh.t[:, tri_id]
-    coords = field.mesh.p[:, tri_nodes]
+    def on_move(event):
+      if self.mouse is None:
+        return
 
-    self.ax.scatter(coords[0], coords[1], color='red')
-    self.fig.canvas.draw()
+      pos = to_pos(event)
+      if pos is not None:
+        self.mouse.on_move(pos, bool(event.buttons))
+
+    def on_release(event):
+      if self.mouse is None:
+        return
+
+      pos = to_pos(event)
+      if pos is not None:
+        self.mouse.on_release(pos)
+
+    self.canvas.mpl_connect("button_press_event", on_press)
+    self.canvas.mpl_connect("motion_notify_event", on_move)
+    self.canvas.mpl_connect("button_release_event", on_release)

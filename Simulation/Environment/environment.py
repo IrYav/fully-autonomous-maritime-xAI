@@ -27,7 +27,11 @@ class Environment:
     self.start = start
     self.end_poly = end_poly
     self.boundary = boundary
-
+  
+  @property
+  def island_list(self):
+      return list(self.islands.geoms)
+  
 # Cubic B-splines
 def interpolate(points: Points) -> BSpline:
   """
@@ -180,7 +184,7 @@ def generate_islands(count: int,
     #Early rejection of any base-points that are near guaranteed to become
     #a base for an invalid island.
     while True:
-      islePoints = np.random.random((2,2)) * scale + boundary[0] #TODO: Enforce min distance later
+      islePoints = np.random.random((2,2)) * scale + boundary[0]
       ls =  LineString(islePoints)
       if ls.intersects(corridor) or any(ls.intersects(i) for i in islands):
         continue
