@@ -14,7 +14,8 @@ from Simulation.Auxilaries.auxiliaries import SimulationState
 from Simulation.Auxilaries.sim_config import SimulationConfig
 
 
-def build_observation(controller : BaseController, steps: int, debugging=False):
+def build_observation(controller : BaseController, debugging=False):
+  steps = controller.sim_state.steps
   env = controller.sim_state.env
   ship = controller.sim_state.ship 
   sim_config = controller.config

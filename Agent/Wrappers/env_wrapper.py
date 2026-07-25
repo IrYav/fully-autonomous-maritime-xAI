@@ -82,9 +82,8 @@ class ShipEnv(gym.Env):
   def reset(self, seed=None, options=None):
     super().reset(seed=seed)
     self.controller.new_training_instance(self.difficulty)
-    self.steps = 0
     self.grad_align = []
-    obs = build_observation(self.controller, self.steps)
+    obs = build_observation(self.controller)
 
     info = {}
 
@@ -95,7 +94,7 @@ class ShipEnv(gym.Env):
   # =================================================
 
   def step(self, action):
-    self.steps += 1
+    steps = self.controller.sim_state.steps
     #Translate to Simulation action
     action = Action(*action)
 
@@ -108,16 +107,16 @@ class ShipEnv(gym.Env):
     # Build observation
     # ---------------------------------------------
 
-    obs = build_observation(self.controller, self.steps)
+    obs = build_observation(self.controller)
 
-    truncated = self.steps >= self.sim_config.max_steps
+    truncated = steps >= self.sim_config.max_steps
     terminated = len(collisions) > 0
     
     if terminated or truncated:
       self._update_counter(collisions)
 
     #Linear time penalty per step.
-    reward = -0.15 * self.steps/self.sim_config.max_steps
+    reward = -0.15 * steps/self.sim_config.max_steps
 
     if collisions == []:
       alignment, dist = get_vectorgrad_alignment(self.controller.sim_state, pos0, pos1)
@@ -176,13 +175,14 @@ class ShipEnv(gym.Env):
 
 
   def _print_ep_info(self, terminated, truncated, collisions):
+    steps = self.controller.sim_state.steps
     if(terminated or truncated):
       grads = np.array(self.grad_align)
       print("-----Episode Over-----")
-      if self.steps < 2:
+      if steps < 2:
         print("Stopped run instantly.")
       else:
-        print(f"Step count: {self.steps} of {self.sim_config.max_steps}")
+        print(f"Step count: {steps} of {self.sim_config.max_steps}")
         print(f"Alignment mean: {grads.mean()}")
       print(f"Collisions: {collisions}")
 

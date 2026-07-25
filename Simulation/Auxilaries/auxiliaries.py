@@ -11,4 +11,4 @@ class SimulationState:
   mesh: BuiltMesh
   field: HarmonicField
   ship: Ship
-
+  steps: int

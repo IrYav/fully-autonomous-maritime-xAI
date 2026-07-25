@@ -38,7 +38,7 @@ class BaseController:
                                  self.config.lview_size, self.config.lview_res)
     self.gview = get_global_view(env, ship, 
                                  self.config.boundary, self.config.gview_res, self.config.lview_size)
-    self.sim_state = SimulationState(env, mesh, field, ship)
+    self.sim_state = SimulationState(env, mesh, field, ship, 0)
 
   def _get_scenario(self, difficulty: Difficulty, pre_made_env: Environment | None = None):
     if pre_made_env is None:
@@ -50,16 +50,14 @@ class BaseController:
     ship, env = self.sim_state.ship, self.sim_state.env
     state, params = ship.state, ship.params
 
+    self.sim_state.steps += 1
     traj = agent.compute_trajectory(state, action, params, dt)
     ship_path = agent.get_path(ship.state, traj, ship.params)
     cols = agent.check_for_collision(ship_path, env)
-    newstate = agent.apply_trajectory(state, traj)
+    ship.state = agent.apply_trajectory(state, traj)
 
-    ship.state = newstate
     update_local_view(self.lview, env, ship, 
                                 self.config.lview_size, self.config.lview_res)
-    # update_global_view(self.gview, env, ship, 
-    #                             self.config.boundary, self.config.gview_res, self.config.lview_size)
     return ship_path, cols
   
   def close(self):

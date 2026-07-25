@@ -64,7 +64,7 @@ class InteractiveController(BaseController):
     if self.model is None:
       raise RuntimeError("Trying to use a non-existing model to generate a step")
       
-    obs = build_observation(self, 0)
+    obs = build_observation(self)
 
     action, _ = self.model.predict(obs, deterministic=True)
     action = agent.Action(*action)
@@ -104,5 +104,5 @@ class InteractiveController(BaseController):
     self.run_mode = RunMode.POLICY
 
   def _get_state_dict(self):
-    obs = build_observation(self, 0, True)
+    obs = build_observation(self, True)
     return obs["state"]
