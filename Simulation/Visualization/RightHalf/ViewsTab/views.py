@@ -7,6 +7,8 @@ from PySide6.QtGui import QImage, QPixmap
 
 import numpy as np
 
+from Simulation.Visualization.VisHelpers.helpers import pretty_str
+
 class PixLabel(QLabel):
   '''
     QLabel but keeps aspect ratio and retains sharp edges.
@@ -73,7 +75,7 @@ class ImageView(QWidget):
 
     #Create an image slot for every image, with a more natural name.
     self.panels = {
-      name: ImagePanel(_pretty_str(name))
+      name: ImagePanel(pretty_str(name))
       for name in image_names
     }
 
@@ -118,37 +120,3 @@ class ImageView(QWidget):
 
       panel.set_pixmap(pix)
 
-class StateVector(QTableWidget):
-  def __init__(self):
-    super().__init__()
-
-    self.setColumnCount(2)
-
-    self.setHorizontalHeaderLabels(
-      ["Variable", "Value"]
-    )
-    self.setEditTriggers(
-      QAbstractItemView.EditTrigger.NoEditTriggers
-    )
-
-  def set_state(self, state: dict):
-    self.setRowCount(len(state))
-    for row, (key, value) in enumerate(state.items()):
-      self.setItem(
-        row,
-        0,
-        QTableWidgetItem(_pretty_str(key))
-      )
-
-      self.setItem(
-        row,
-        1,
-        QTableWidgetItem(str(f"{value:.6g}"))
-      )
-
-def _pretty_str(text: object) -> str:
-  '''
-    Slightly prettier visually represented strings, 
-    e.g., `image_view` becomes `Image View`
-  '''
-  return str(text).replace("_", " ").title()

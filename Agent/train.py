@@ -14,7 +14,7 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
 
-from Agent.Wrappers.ship_wrapper import ShipEnv
+from Agent.Wrappers.env_wrapper import ShipEnv
 from Agent.callback import StatsCallback
 from Simulation.Auxilaries.sim_config import sim_config
 

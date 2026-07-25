@@ -28,3 +28,10 @@ def line_patch(
     linewidth=linewidth,
     alpha=alpha,
   )
+
+def pretty_str(text: object) -> str:
+  '''
+    Slightly prettier visually represented strings, 
+    e.g., `image_view` becomes `Image View`
+  '''
+  return str(text).replace("_", " ").title()

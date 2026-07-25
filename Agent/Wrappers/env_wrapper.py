@@ -10,6 +10,7 @@ from Agent.Observation.observation import build_observation, get_vectorgrad_alig
 from Agent.Observation.rasterize import get_local_view
 from Agent.network import NetworkConfig
 from Controller.MultiThread.buffered_controller import BufferedMTController
+from Simulation.Auxilaries.auxiliaries import SimulationState
 from Simulation.Auxilaries.sim_config import SimulationConfig
 from Simulation.Environment.agent import Action
 
@@ -115,38 +116,8 @@ class ShipEnv(gym.Env):
     if terminated or truncated:
       self._update_counter(collisions)
 
-    #Linear time penalty per step.
-    reward = -0.15 * steps/self.sim_config.max_steps
-
-    if collisions == []:
-      alignment, dist = get_vectorgrad_alignment(self.controller.sim_state, pos0, pos1)
-      
-      # Alleviate reward loss for minor deviations from a good trajectory
-      # Increase reward loss for minor deviations from a bad trajectory
-      #alignment = math.copysign(abs(alignment) ** 0.75, alignment)
-
-      # How far do we travel, and how good is the alignment?
-      progress_reward = alignment * dist
-      # Scale progress bonus down with map size.
-      progress_reward /= self.sim_config.map_diagonal
-      # Weighting factor for following the harmonic field, for complex maps the 
-      # harmonic field "flows" past islands, and hence progress rewards may 
-      # sum up to multiples of the following factor, 
-      # as a good path may be longer than the diagonal.
-      progress_reward *= 400
-
-      # Store gradient quality (for logging)
-      self.grad_align.append(alignment)
-
-
-
-      reward += progress_reward
-
-    #End is the first entry, iff it's the only entry.
-    elif collisions[0] == "end":
-      reward = 100 #Reached end
-    else:
-      reward = -150 #Hard crash
+    reward = get_reward(collisions,pos0,pos1,
+                        self.sim_config,self.controller.sim_state)["reward"]
 
     info = {}
 
@@ -209,3 +180,55 @@ class ShipEnv(gym.Env):
 def get_net_conf(sim_config: SimulationConfig) -> NetworkConfig:
   return NetworkConfig(sim_config.lview_res[0],12,2)
 
+@staticmethod
+def get_reward(
+  collisions: list[str], 
+  pos0, 
+  pos1, 
+  sim_config: SimulationConfig, 
+  sim_state: SimulationState) -> dict[str, float]:
+  '''
+    How much reward do we get for the current step?  
+  '''
+  res = {
+    "reward" : 0,
+    "time_penalty" : 0,
+    "progress_reward" : 0,
+    "finished" : 0,
+    "crashed" : 0,
+  }
+
+  #Linear time penalty per step.
+  reward = -0.15 * sim_state.steps/sim_config.max_steps
+  res["time_penalty"] = reward
+
+  if collisions == []:
+    alignment, dist = get_vectorgrad_alignment(sim_state, pos0, pos1)
+    
+    # Alleviate reward loss for minor deviations from a good trajectory
+    # Increase reward loss for minor deviations from a bad trajectory
+    #alignment = math.copysign(abs(alignment) ** 0.75, alignment)
+
+    # How far do we travel, and how good is the alignment?
+    progress_reward = alignment * dist
+    # Scale progress bonus down with map size.
+    progress_reward /= sim_config.map_diagonal
+    # Weighting factor for following the harmonic field, for complex maps the 
+    # harmonic field "flows" past islands, and hence progress rewards may 
+    # sum up to multiples of the following factor, 
+    # as a good path may be longer than the diagonal.
+    progress_reward *= 400
+    res["progress_reward"] = progress_reward
+    reward += progress_reward
+
+  #End is the first entry, iff it's the only entry.
+  elif collisions[0] == "end":
+    reward = 100 #Reached end
+    res["finished"] = reward
+  else:
+    reward = -150 #Hard crash
+    res["crashed"] = reward
+
+  res["reward"] = reward
+
+  return res

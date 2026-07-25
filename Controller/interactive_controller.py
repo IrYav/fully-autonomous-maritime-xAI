@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer
 
 from Agent.Observation.observation import build_observation
+from Agent.Wrappers.env_wrapper import get_reward
 from Controller.controller import BaseController
 from Simulation.Auxilaries.sim_config import SimulationConfig
 from Simulation.Environment import agent
@@ -41,20 +42,23 @@ class InteractiveController(BaseController):
     self.viewer.set_lviews(self.lview)
     self.viewer.set_gviews(self.gview)
     self.viewer.set_state_vector(self._get_state_dict())
-  def simulate_step(self, action, dt):
-    ship_path, cols = super().simulate_step(action, dt)
+    self.viewer.set_reward_dict(self._get_reward_dict(True))
 
-    if cols:
-      if cols[0] == "end":
+  def simulate_step(self, action, dt):
+    self.ship_path, self.cols = super().simulate_step(action, dt)
+
+    if self.cols:
+      if self.cols[0] == "end":
         print("Reached the goal")
       else:
-        print(f"Collided with: {cols}")
+        print(f"Collided with: {self.cols}")
 
-    self.viewer.update_step(ship_path)
+    self.viewer.update_step(self.ship_path)
     self.viewer.set_lviews(self.lview)
     self.viewer.set_gviews(self.gview)
     self.viewer.set_state_vector(self._get_state_dict())
-    return ship_path, cols
+    self.viewer.set_reward_dict(self._get_reward_dict())
+    return self.ship_path, self.cols
 
   def simulate_manual_step(self):
     action, dt = self.viewer.get_sim_input()
@@ -106,3 +110,30 @@ class InteractiveController(BaseController):
   def _get_state_dict(self):
     obs = build_observation(self, True)
     return obs["state"]
+
+  def _get_reward_dict(self, first_call = False):
+    if first_call:
+      self.res = {
+        "reward" : "Undefined",
+        "time_penalty" : "Undefined",
+        "progress_reward" : "Undefined",
+        "finished" : "Undefined",
+        "crashed" : "Undefined",
+        "total_reward" : 0,
+      }
+      
+    else:
+      curr_pos = self.sim_state.ship.state.position
+      self.res.update(get_reward(
+          self.cols,
+          self.old_pos, 
+          curr_pos,
+          self.config,
+          self.sim_state,
+        )
+      )
+      self.res["total_reward"] += self.res["reward"]
+
+    #For next call.
+    self.old_pos = self.sim_state.ship.state.position
+    return self.res

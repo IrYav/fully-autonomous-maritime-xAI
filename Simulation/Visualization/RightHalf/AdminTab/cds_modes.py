@@ -7,7 +7,7 @@ from Simulation.Environment.environment import Points
 from Simulation.Visualization.Mouse.mouse_mode import MouseMode
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import AreaObject
 from Simulation.Visualization.RightHalf.AdminTab.editor_controller import EditorController
-from Simulation.Visualization.VisHelpers.patch_creaters import line_patch
+from Simulation.Visualization.VisHelpers.helpers import line_patch
 
 
 class CreateMode(MouseMode):

@@ -79,6 +79,10 @@ def build_observation(controller : BaseController, debugging=False):
   }
 
 def get_posgrad_alignment(sim_state: SimulationState) -> float:
+  '''
+  Alignment between the ship's heading and the local potential field gradient.
+  Ignores the actual movement of the ship.
+  '''
   heading = sim_state.ship.state.heading
   pos = sim_state.ship.state.position
 
@@ -92,6 +96,12 @@ def get_posgrad_alignment(sim_state: SimulationState) -> float:
   return reward_alignment
 
 def get_vectorgrad_alignment(sim_state: SimulationState, pos0, pos1) -> tuple[float,float]:
+  '''
+    How much does a movement from `pos0` to `pos1` align with the 
+    direction of the gradient at `pos0`?
+    
+    And how much distance did it cover?
+  '''
   delta_pos = pos1 - pos0
 
   dist = np.linalg.norm(delta_pos)

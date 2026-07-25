@@ -22,7 +22,8 @@ from Simulation.Visualization.Mouse.mouse_tool_actions import MouseToolActions
 from Simulation.Visualization.RightHalf.AdminTab.editor_controller import EditorController
 from Simulation.Visualization.RightHalf.AdminTab.env_viewer import EditorTab
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import Material
-from Simulation.Visualization.RightHalf.views import ImageView, StateVector
+from Simulation.Visualization.RightHalf.ViewsTab.views import ImageView
+from Simulation.Visualization.RightHalf.ViewsTab.tables import StateVector, TablesTab
 
 
 class EnvironmentViewer(QWidget):
@@ -164,11 +165,11 @@ class EnvironmentViewer(QWidget):
 
     self.local_view = ImageView(["obstacles", "goal", "ship"])
     self.global_view = ImageView(["islands", "goal", "lview"])
-    self.state_vector = StateVector()
+    self.tables_tab = TablesTab()
 
     self.input_tab.addTab(self.local_view, "Local View")
     self.input_tab.addTab(self.global_view, "Global View")
-    self.input_tab.addTab(self.state_vector, "State")
+    self.input_tab.addTab(self.tables_tab, "State")
 
     #Admin tabs
     self.editor_tab = EditorTab(self.ec,self.tools, self)
@@ -190,7 +191,10 @@ class EnvironmentViewer(QWidget):
     self.global_view.set_views(obs)
 
   def set_state_vector(self, data: dict):
-    self.state_vector.set_state(data)
+    self.tables_tab.set_state(data)
+
+  def set_reward_dict(self, data: dict):
+    self.tables_tab.set_reward(data)
 
   def set_editor_cont(self, ec: EditorController):
     self.ec = ec
