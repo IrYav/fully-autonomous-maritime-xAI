@@ -106,7 +106,7 @@ def get_vectorgrad_alignment(sim_state: SimulationState, pos0, pos1) -> tuple[fl
 
   dist = np.linalg.norm(delta_pos)
   if dist == 0:
-    return 0.0
+    return 0.0, 0.0
 
   move_dir = delta_pos / dist
 

@@ -16,6 +16,15 @@ class Material(Enum):
   VOID = auto()
   END = auto()
 
+  @property
+  def artist_name(self):
+    return {
+      Material.LAND: "islands",
+      Material.VOID: "cutout",
+      Material.END: "end",
+    }[self]
+
+
 @dataclass(slots=True)
 class AreaObject:
   """

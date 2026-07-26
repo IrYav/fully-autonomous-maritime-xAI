@@ -21,6 +21,7 @@ from Simulation.Visualization.visualization import EnvironmentViewer
 class RunMode(Enum):
   MANUAL = auto()
   POLICY = auto()
+  POLICY_STOP = auto()
 
 class InteractiveController(BaseController):
   def __init__(self, config: SimulationConfig, model: PPO | SAC | None):
@@ -72,12 +73,14 @@ class InteractiveController(BaseController):
 
     action, _ = self.model.predict(obs, deterministic=True)
     action = agent.Action(*action)
-    self.simulate_step(action, self.config.dt) # Important, use fixed dt.
+    _, colls = self.simulate_step(action, self.config.dt) # Important, use fixed dt.
+    if not colls == [] and self.run_mode is RunMode.POLICY_STOP:
+      self.auto_run.toggle()
 
   def run(self):
     sys.exit(self.app.exec())
   
-  def _toggle_manual_run(self, enabled: bool):
+  def set_auto_run(self, enabled: bool):
     if enabled:
       self.run_timer.start(100)
     else:
@@ -90,15 +93,16 @@ class InteractiveController(BaseController):
     if self.model is not None:
       self.viewer.add_sidebar_button("Policy Step", self.simulate_policy_step)
       run_modes["Policy"] = self._set_policy_mode
-    self.viewer.add_sidebar_button("Auto Run",self._toggle_manual_run,True)
+      run_modes["Policy Stop"] = self._set_policy_stop_mode
+    self.auto_run = self.viewer.add_sidebar_button("Auto Run",self.set_auto_run,True)
     self.viewer.add_radio_group("Run Mode",run_modes)
     self.viewer.show()
 
   def _timer_step(self):
-    if self.run_mode == RunMode.MANUAL:
+    if self.run_mode is RunMode.MANUAL:
       self.simulate_manual_step()
 
-    elif self.run_mode == RunMode.POLICY:
+    elif self.run_mode in [RunMode.POLICY, RunMode.POLICY_STOP]:
       self.simulate_policy_step()
 
   def _set_manual_mode(self):
@@ -106,6 +110,9 @@ class InteractiveController(BaseController):
 
   def _set_policy_mode(self):
     self.run_mode = RunMode.POLICY
+
+  def _set_policy_stop_mode(self):
+    self.run_mode = RunMode.POLICY_STOP
 
   def _get_state_dict(self):
     obs = build_observation(self, True)

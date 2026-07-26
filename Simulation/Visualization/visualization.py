@@ -1,3 +1,6 @@
+from matplotlib import pyplot as plt
+from matplotlib.artist import Artist
+from matplotlib.colors import LogNorm
 from matplotlib.patches import PathPatch
 import numpy as np
 import matplotlib.tri as mtri
@@ -12,7 +15,7 @@ from PySide6.QtWidgets import (
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as Canvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT
 from shapely.plotting import plot_line, plot_polygon
-from shapely import affinity
+from shapely import Polygon, affinity
 
 
 from Simulation.Auxilaries.auxiliaries import SimulationState
@@ -23,7 +26,9 @@ from Simulation.Visualization.RightHalf.AdminTab.editor_controller import Editor
 from Simulation.Visualization.RightHalf.AdminTab.env_viewer import EditorTab
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import Material
 from Simulation.Visualization.RightHalf.ViewsTab.views import ImageView
-from Simulation.Visualization.RightHalf.ViewsTab.tables import StateVector, TablesTab
+from Simulation.Visualization.RightHalf.ViewsTab.tables import TablesTab
+from Simulation.Visualization.VisHelpers.artist_manager import ArtistManager
+from Simulation.Visualization.VisHelpers.helpers import pretty_str
 
 
 class EnvironmentViewer(QWidget):
@@ -32,22 +37,14 @@ class EnvironmentViewer(QWidget):
 
     # State
     self.sim_state : SimulationState = None
+    self.ttraj = Polygon() #Total trajectory travelled by ship
     
     #Render details for polygons
     self._set_alphas()
     self._set_colors()
 
     # Artists
-    self.artists = {
-      "corridor": None,
-      "islands": None,
-      "mesh": None,
-      "potential_contour": None,
-      "potential_fill": None,
-      "gradient": None,
-      "ship" : None,
-      "trajectory" : None
-    }
+    self.artists = ArtistManager()
 
     # Matplotlib Figure
     self.fig = Figure()
@@ -86,7 +83,6 @@ class EnvironmentViewer(QWidget):
     self.sidebar_layout.addStretch()
 
     self.setLayout(main_layout)
-  
   # ---------- Init Helpers --------
   # General Structure, create widget, add it to layout.
   def _setup_inputs(self, layout):
@@ -132,21 +128,12 @@ class EnvironmentViewer(QWidget):
     layout.addWidget(container)
   
   def _setup_visibility_controls(self, layout):
-    #Disable cluttering artists per default.
-    default_visible = {
-      "mesh": False,
-      "gradient": False,          # Quiver
-      "potential_fill": False,
-      "potential_contour": False,
-      "corridor": False,
-    }
-        
-
+    
     self.visibility_boxes = {}
 
-    for name in self.artists.keys():
-      box = QCheckBox(name)
-      box.setChecked(default_visible.get(name, True))
+    for name in self.artists.CHECKBOX_ARTISTS.keys():
+      box = QCheckBox(pretty_str(name))
+      box.setChecked(self.artists.DEFAULT_INVIS.get(name, True))
 
       box.stateChanged.connect(
           lambda _, n=name: self.toggle_artist(n)
@@ -179,8 +166,10 @@ class EnvironmentViewer(QWidget):
 
   # ---------- Public API ----------
   def set_sim_state(self, sim_state : SimulationState):
+    self.ttraj = Polygon() #Wipe old path.
     self.sim_state = sim_state
     self.ec.set_env(sim_state.env)
+    self._draw_trajectory(get_ship_polygon(self.sim_state.ship)) # Only current pos.
     self._render()
     self._set_ax_lims()
 
@@ -206,7 +195,7 @@ class EnvironmentViewer(QWidget):
     self.button_layout.addWidget(btn)
     return btn
 
-  def add_sidebar_button(self, label, callback, toggleable = False):
+  def add_sidebar_button(self, label, callback, toggleable = False) -> QPushButton:
     btn = QPushButton(label)
     if toggleable:
       btn.setCheckable(True)
@@ -251,6 +240,7 @@ class EnvironmentViewer(QWidget):
   
   def update_step(self, ship_path):
     self._draw_ship()
+    self.ttraj = self.ttraj.union(ship_path)
     self._draw_trajectory(ship_path)
     self.canvas.draw()
 
@@ -268,13 +258,10 @@ class EnvironmentViewer(QWidget):
 
       Can be called with `patches = []` to wipe the preview.
     '''
-    self._remove_artist("Preview")
-    artists = []
     for patch in patches:
         self.ax.add_patch(patch)
-        artists.append(patch)
 
-    self.artists["Preview"] = artists
+    self.artists["preview"] = patches
     self.canvas.draw()
 
   # ---------- Rendering ----------
@@ -295,36 +282,32 @@ class EnvironmentViewer(QWidget):
     self.canvas.draw()
 
   def _draw_draft(self):
-    #Delete all draft
-    for mat in Material:
-      self._remove_artist(mat)
-      self.artists[mat] = []
+    patches = {mat: [] for mat in Material}
+
     for ao in self.ec.draft:
-      self.artists[ao.material].append(
-        plot_polygon(
-          ao.polygon,
-          ax=self.ax,
-          alpha=self.alphas[ao.material],
-          color=self.colors[ao.material],
-          add_points=False
-        )
+      patch = plot_polygon(
+        ao.polygon,
+        ax=self.ax,
+        alpha=self.alphas[ao.material],
+        color=self.colors[ao.material],
+        add_points=False,
       )
+      patches[ao.material].append(patch)
+
+    for mat, artists in patches.items():
+      self.artists[mat.artist_name] = artists
 
   def _draw_corridor(self):
-    self._remove_artist("corridor")
-    env = self.sim_state.env
     self.artists["corridor"] = plot_polygon(
-      env.corridor,
+      self.sim_state.env.corridor,
       ax=self.ax,
       color="lightgray",
       add_points=False
     )
 
   def _draw_boundary(self):
-    self._remove_artist("boundary")
-    env = self.sim_state.env
     self.artists["boundary"] = plot_line(
-      env.boundary.exterior,
+      self.sim_state.env.boundary.exterior,
       ax=self.ax,
       color="darkgray",
       alpha=0.5,
@@ -333,7 +316,6 @@ class EnvironmentViewer(QWidget):
 
   def _draw_mesh(self):
     mesh = self.sim_state.mesh.mesh_tri
-    self._remove_artist("mesh")
 
     triang = mtri.Triangulation(
         *mesh.p,
@@ -348,30 +330,22 @@ class EnvironmentViewer(QWidget):
 
     tri = field.tri
     phi = field.u
-    # print(np.finfo(phi.dtype).bits)
-    # eps = 1e-12
-    # delta = np.clip(1 - phi, eps, 1.0)
-    # phi = -np.log10(delta)
+    phi = phi #** (1/7)
     grad = field.grad
 
-    self._remove_artist("potential_contour")
-    self._remove_artist("potential_fill")
-    self._remove_artist("gradient")
+    levels = np.linspace(0,1,10)
+    cmap = plt.get_cmap("viridis")
+    colors = cmap(levels)
+    levels = levels**15 # More levels allocated for lower potential
 
-    #eps = 1e-6
-    #phi = np.log10(phi + eps)
-
-    levels = np.linspace(0, 1, 10)
-    levels = levels**10 # More levels for lower potential
-    #Contour
-    contour = self.ax.tricontour(tri, phi, levels=levels, alpha = 1)
+    contour = self.ax.tricontour(tri, phi, colors=colors, levels=levels, alpha = 1)
     self.artists["potential_contour"] = contour
 
-    #Filled contour (optional)
-    fill = self.ax.tricontourf(tri, phi, levels=levels, alpha=0.2)
+    #Filled contour
+    fill = self.ax.tricontourf(tri, phi, colors=colors, levels=levels, alpha=0.2)
     self.artists["potential_fill"] = fill
 
-    #Zentroiden
+    #Triangles
     triangles = tri.triangles
     cx = np.mean(tri.x[triangles], axis=1)
     cy = np.mean(tri.y[triangles], axis=1)
@@ -406,8 +380,6 @@ class EnvironmentViewer(QWidget):
   def _draw_ship(self):
     ship_poly = get_ship_polygon(self.sim_state.ship)
 
-    self._remove_artist("ship")
-
     self.artists["ship"] = plot_polygon(
       ship_poly,
       ax=self.ax,
@@ -416,13 +388,19 @@ class EnvironmentViewer(QWidget):
     )
 
   def _draw_trajectory(self, path_poly):
-    self._remove_artist("trajectory")
-
-    self.artists["trajectory"] = plot_polygon(
+    self.artists["last_step"] = plot_polygon(
       path_poly,
       ax=self.ax,
       color="steelblue",
-      alpha=0.3,
+      alpha=0.4,
+      add_points=False
+    )
+
+    self.artists["total_trajectory"] = plot_polygon(
+      self.ttraj,
+      ax=self.ax,
+      color="steelblue",
+      alpha=0.2,
       add_points=False
     )
 
@@ -430,6 +408,18 @@ class EnvironmentViewer(QWidget):
     self.ax.set_aspect('equal', adjustable='box')
     self.ax.set_xlabel("Distance in m")
     self.ax.set_ylabel("Distance in m")
+
+  def _set_ax_lims(self):
+    '''
+      Set the default view to slightly bigger than the boundary.
+    '''
+    boundary = self.sim_state.env.boundary
+    boundary = affinity.scale(boundary, 1.05, 1.05)
+    xmin, ymin, xmax, ymax = boundary.bounds
+    self.ax.set_xlim(xmin, xmax)
+    self.ax.set_ylim(ymin, ymax)
+
+  # ---------- Utilities ----------
 
   def _set_colors(self):
     self.colors = {
@@ -445,64 +435,16 @@ class EnvironmentViewer(QWidget):
       Material.END: 0.35,
     }
 
-  def _set_ax_lims(self):
-    '''
-      Set the default view to slightly bigger than the boundary.
-    '''
-    boundary = self.sim_state.env.boundary
-    boundary = affinity.scale(boundary, 1.05, 1.05)
-    xmin, ymin, xmax, ymax = boundary.bounds
-    self.ax.set_xlim(xmin, xmax)
-    self.ax.set_ylim(ymin, ymax)
-
-  # ---------- Utilities ----------
-  def _remove_artist(self, key):
-    artist = self.artists.get(key)
-
-    if artist is None:
-      return
-
-    # ContourSet (Multiple Collections)
-    if hasattr(artist, "collections"):
-      for coll in artist.collections:
-        coll.remove()
-    elif isinstance(artist, list):
-      for a in artist:
-        a.remove()
-    else:
-      artist.remove()
-
-    self.artists[key] = None
-
   def _apply_visibility_settings(self):
-    for name in self.visibility_boxes:
-      self.toggle_artist(name)
+    for name, cb in self.visibility_boxes.items():
+        self.artists.set_vis(name, cb.isChecked())
 
   def toggle_artist(self, name):
-    artist = self.artists.get(name)
-
-    if artist is None:
-      return
-
-    visible = self.visibility_boxes[name].isChecked()
-
-    # ContourSet
-    if hasattr(artist, "collections"):
-      for coll in artist.collections:
-        coll.set_visible(visible)
-
-    # Lists of artists
-    elif isinstance(artist, list):
-      for a in artist:
-        a.set_visible(visible)
-
-    # Singleartist
-    else:
-      artist.set_visible(visible)
-
+    self.artists.toggle_vis(name)
     self.canvas.draw_idle()
 
   def inspect_triangle(self, pos):
+    #TODO Turn into mouse mode. Currently not used.
     field = self.sim_state.field
     tri_id = field.tri.get_trifinder()(*pos)
     if tri_id == -1:
