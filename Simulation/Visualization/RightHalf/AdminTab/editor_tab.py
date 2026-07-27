@@ -36,10 +36,14 @@ class EditorTab(QWidget):
     sections.addWidget(self._selection_section())
     sections.addStretch()
     sections.addWidget(self._bottom_buttons())
-    
-    #
+
     self._connect_signals()
 
+  #Called on tab leave
+  def hideEvent(self, event):
+    self.mta.clear()
+    super().hideEvent(event)
+  
   def _islands_section(self) -> QWidget:
     #---LAYOUT---
     #Local main container

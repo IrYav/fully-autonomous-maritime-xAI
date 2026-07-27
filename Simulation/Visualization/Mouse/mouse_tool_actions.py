@@ -52,17 +52,22 @@ class MouseToolActions:
 
   def set_editor(self, ec : EditorController):
     '''
-      Activates all Tools requiring an `EditorController`
+      Enables all Tools requiring an `EditorController`
     '''
     if Tool.CREATE not in self.modes: #Avoid double setting
       self.register(Tool.CREATE, "Create", CreateMode(ec))
-      self.register(Tool.SELECT, "Select", SelectMode(ec)) # TODO change later.
+      self.register(Tool.SELECT, "Select", SelectMode(ec))
 
   def clear(self):
+    '''
+      Clear a mouse mode.
+    '''
     action = self._group.checkedAction()
     if action is not None:
         action.setChecked(False)
 
   def activate(self, tool: Tool):
-    print("Activated: ", tool)
+    '''
+      Set a MouseMode.
+    '''
     self.actions[tool].setChecked(True)

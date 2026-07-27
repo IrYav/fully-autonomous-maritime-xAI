@@ -23,7 +23,7 @@ from Simulation.Environment.agent import Action, get_ship_polygon
 from Simulation.Visualization.Mouse.mouse_tool import MouseTool
 from Simulation.Visualization.Mouse.mouse_tool_actions import MouseToolActions
 from Simulation.Visualization.RightHalf.AdminTab.editor_controller import EditorController
-from Simulation.Visualization.RightHalf.AdminTab.env_viewer import EditorTab
+from Simulation.Visualization.RightHalf.AdminTab.editor_tab import EditorTab
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import Material
 from Simulation.Visualization.RightHalf.ViewsTab.views import ImageView
 from Simulation.Visualization.RightHalf.ViewsTab.tables import TablesTab
