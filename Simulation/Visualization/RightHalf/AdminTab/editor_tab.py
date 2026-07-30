@@ -34,7 +34,7 @@ class EditorTab(QWidget):
 
     sections.addWidget(self._islands_section())
     sections.addWidget(self._selection_section())
-    sections.addStretch()
+    sections.addStretch(1)
     sections.addWidget(self._bottom_buttons())
 
     self._connect_signals()
@@ -89,6 +89,9 @@ class EditorTab(QWidget):
     land.setProperty("material", Material.LAND)
     void.setProperty("material", Material.VOID)
     end.setProperty("material", Material.END)
+    end.setToolTip("Only the last end will be retained on commit." \
+      " To have a meaningful navigation task," \
+      " there has to be exactly one end within the boundary.")
 
     self.group = QButtonGroup(section)
     self.group.addButton(land)
@@ -148,6 +151,8 @@ class EditorTab(QWidget):
 
     self.commit = QPushButton()
     self.commit.setText("Commit changes and recalculate everything.")
+    self.commit.setToolTip("Without a commit, " \
+      "the agent won't see any changes in the environment")
     self.commit.clicked.connect(self.ec.on_commit)
 
     section_layout.addWidget(self.commit)
