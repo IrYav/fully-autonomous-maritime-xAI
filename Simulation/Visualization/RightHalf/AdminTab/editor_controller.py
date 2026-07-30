@@ -16,17 +16,31 @@ class EditorController(QObject):
   env: Environment | None
   draft : EnvironmentDraft
   material : Material
-  selected : AreaObject | None
-  changed = Signal()
+  _selected : AreaObject | None
+  draft_changed = Signal()
   preview_changed = Signal(object) #Contains list[PathPatch]
-  env_changed = Signal()
+  selected_changed = Signal()
+
   def __init__(
       self,
       on_commit):
     super().__init__()
     self._on_commit = on_commit
-    self.selected = None
+    self._selected = None
     self.material = Material.LAND
+
+  #--- Managed properties ---
+  @property
+  def selected(self):
+    return self._selected
+
+  @selected.setter
+  def selected(self, value):
+      if value is self._selected:
+          return
+
+      self._selected = value
+      self.selected_changed.emit()
 
   #--- Viewer API ---
   def on_auto(self):
@@ -36,8 +50,7 @@ class EditorController(QObject):
     ao = self._create_rand_area()
 
     self.draft.add(ao)
-    self.selected = ao
-    self.changed.emit()
+    self.draft_changed.emit()
 
   def on_set_material(self, new_mat : Material):
     '''
@@ -46,23 +59,43 @@ class EditorController(QObject):
     self.material = new_mat
     if self.selected is not None:
       self.selected.material = new_mat
-    self.changed.emit()
+    self.draft_changed.emit()
 
   def on_delete(self):
+    if self.selected is None:
+      return
     self.draft.remove(self.selected.id)
     self.selected = None
-    self.changed.emit()
+    self.draft_changed.emit()
     self.preview_changed.emit([]) # Remove the selected marker
+
 
   def on_commit(self):
     new_env = self.draft.draft_to_env(self.env)
     self._on_commit(new_env)
 
+  def can_delete(self) -> tuple[bool, str]:
+    ao = self.selected
+
+    if ao is None:
+      return False, "None selected."
+    elif ao.material is Material.END:
+      #We require another End AO. 
+      if any(
+        x is not ao and x.material is Material.END
+        for x in self.draft
+        ):
+        return True, "Delete the current end polygon."
+      else:
+        return False, "Can't delete the last end polygon."
+    else:
+      return True, "Delete the current polygon."
+
   #--- Controller functions ---
   def add_man_area(self, points: list[Point]):
     polygon = Polygon(points)
     self.draft.add(AreaObject(self.draft.next_id, polygon, self.material))
-    self.changed.emit()
+    self.draft_changed.emit()
 
   def set_env(self, env: Environment | None):
     if env is not None:
@@ -71,10 +104,16 @@ class EditorController(QObject):
     else:
       self.draft = EnvironmentDraft() # Empty container.
       
-    self.changed.emit()
+    self.draft_changed.emit()
 
   def to_front(self, ao: AreaObject):
     self.draft.move_to_front(ao.id)
+
+  def set_selected(self, ao: AreaObject | None):
+    self._selected = ao
+    
+  def clear_pv(self):
+    self.preview_changed.emit([])
 
   #--- Local Methods ---
   def _create_rand_area(self):

@@ -9,7 +9,7 @@ from matplotlib.patches import PathPatch
 
 from Simulation.Visualization.Mouse.mouse_tool_actions import MouseToolActions, Tool
 from Simulation.Visualization.RightHalf.AdminTab.editor_controller import EditorController
-from Simulation.Visualization.RightHalf.AdminTab.cds_modes import CreateMode
+from Simulation.Visualization.RightHalf.AdminTab.mouse_modes import CreateMode
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import Material
 
 from typing import TYPE_CHECKING
@@ -41,7 +41,10 @@ class EditorTab(QWidget):
 
   #Called on tab leave
   def hideEvent(self, event):
+    #Closed editor, so no edit mode is active.
+    #Also clears various creation doodles.
     self.mta.clear()
+    self.ec.clear_pv()
     super().hideEvent(event)
   
   def _islands_section(self) -> QWidget:
@@ -132,6 +135,7 @@ class EditorTab(QWidget):
     self.delete = QPushButton()
     self.delete.setText("Delete")
     self.delete.clicked.connect(self.ec.on_delete)
+    self.delete.setEnabled(False) # Nothing selected on start
 
     group_layout.addWidget(self.select)
     group_layout.addWidget(self.delete)
@@ -152,13 +156,11 @@ class EditorTab(QWidget):
   
   def _connect_signals(self):
     # render draft + preview
-    self.ec.changed.connect(self._on_changed_signal)
+    self.ec.draft_changed.connect(self._on_changed_signal)
     # render preview
     self.ec.preview_changed.connect(self._on_pv_changed_signal) 
-
-  def _on_env_changed_signal(self):
-    return
-    #self.env_view._draw
+    # Delete button toggle
+    self.ec.selected_changed.connect(self._set_delete_toggle)
 
   def _on_changed_signal(self):
     self.env_view.update_draft()
@@ -168,15 +170,11 @@ class EditorTab(QWidget):
     self.env_view.set_preview(artists)
     self.finish.setEnabled(self.mta.mouse_tool.can_finish)
 
-  def _on_manual_clicked(self) -> None:
-    """
-    Enter manual island creation mode.
-
-    Mouse clicks are interpreted as polygon vertices until the
-    creation is finished or cancelled.
-    """
-    #TODO
-    pass
+  def _set_delete_toggle(self):
+    '''Ensure delete button is only conditionally available.'''
+    can_delete, tooltip = self.ec.can_delete()
+    self.delete.setEnabled(can_delete)
+    self.delete.setToolTip(tooltip)
 
   def _on_finish_clicked(self) -> None:
     """
@@ -187,7 +185,6 @@ class EditorTab(QWidget):
     """
     mt = self.mta.mouse_tool
     mt.on_finish()
-    pass
 
   def _on_material_changed(self, button: QAbstractButton) -> None:
     """

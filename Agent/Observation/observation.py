@@ -78,6 +78,25 @@ def build_observation(controller : BaseController, debugging=False):
     "state": state_obs,
   }
 
+def dict_to_obs(d: dict[str, float]):
+  '''
+    Turning a dict of observations into an array, of correct order.
+  '''
+  return np.array([
+    d["ship_x_norm"],
+    d["ship_y_norm"],
+    d["heading_cos"],
+    d["heading_sin"],
+    d["velocity_norm"],
+    d["time_elapsed_norm"],
+    d["rel_x_norm"],
+    d["rel_y_norm"],
+    d["rel_angle_cos"],
+    d["rel_angle_sin"],
+    d["end_x_norm"],
+    d["end_y_norm"],
+  ])
+
 def get_posgrad_alignment(sim_state: SimulationState) -> float:
   '''
   Alignment between the ship's heading and the local potential field gradient.

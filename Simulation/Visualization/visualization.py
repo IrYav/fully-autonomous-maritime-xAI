@@ -187,7 +187,7 @@ class EnvironmentViewer(QWidget):
 
   def set_editor_cont(self, ec: EditorController):
     self.ec = ec
-    self.ec.changed.connect(self._draw_draft)
+    self.ec.draft_changed.connect(self._draw_draft)
 
   def add_main_button(self, label, callback):
     btn = QPushButton(label)
@@ -226,7 +226,9 @@ class EnvironmentViewer(QWidget):
 
       group.addButton(btn)
       layout.addWidget(btn)
-
+      if label == "Policy Stop":
+        btn.setToolTip("Continue the run until collision or reaching the goal.")
+      
     self.sidebar_layout.addWidget(container)
 
     return group
@@ -237,6 +239,9 @@ class EnvironmentViewer(QWidget):
         self.rudder_input.value() / 100, 
         self.accel_input.value() / 100), 
       self.dt_input.value())
+
+  def get_agent_observation(self) -> dict[str, float]:
+    return self.tables_tab.agent_observation
   
   def update_step(self, ship_path):
     self._draw_ship()

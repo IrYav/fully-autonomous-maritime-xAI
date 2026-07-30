@@ -8,7 +8,7 @@ from stable_baselines3 import PPO, SAC
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer
 
-from Agent.Observation.observation import build_observation
+from Agent.Observation.observation import build_observation, dict_to_obs
 from Agent.Wrappers.env_wrapper import get_reward
 from Controller.controller import BaseController
 from Simulation.Auxilaries.sim_config import SimulationConfig
@@ -69,8 +69,9 @@ class InteractiveController(BaseController):
     if self.model is None:
       raise RuntimeError("Trying to use a non-existing model to generate a step")
       
-    obs = build_observation(self)
-
+    obs = build_observation(self) 
+    obs_state_dict = self.viewer.get_agent_observation()
+    obs["state"] = dict_to_obs(obs_state_dict)
     action, _ = self.model.predict(obs, deterministic=True)
     action = agent.Action(*action)
     _, colls = self.simulate_step(action, self.config.dt) # Important, use fixed dt.

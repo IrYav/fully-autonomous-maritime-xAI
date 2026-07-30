@@ -5,7 +5,7 @@ from enum import Enum, auto
 
 from Simulation.Visualization.Mouse.mouse_mode import MouseMode
 from Simulation.Visualization.Mouse.mouse_tool import MouseTool
-from Simulation.Visualization.RightHalf.AdminTab.cds_modes import CreateMode, SelectMode
+from Simulation.Visualization.RightHalf.AdminTab.mouse_modes import CreateMode, SelectMode
 from Simulation.Visualization.RightHalf.AdminTab.editor_controller import EditorController
 
 class Tool(Enum):
@@ -54,6 +54,7 @@ class MouseToolActions:
     '''
       Enables all Tools requiring an `EditorController`
     '''
+    self.ec = ec
     if Tool.CREATE not in self.modes: #Avoid double setting
       self.register(Tool.CREATE, "Create", CreateMode(ec))
       self.register(Tool.SELECT, "Select", SelectMode(ec))
@@ -63,6 +64,8 @@ class MouseToolActions:
       Clear a mouse mode.
     '''
     action = self._group.checkedAction()
+    # if hasattr(self, "ec"):
+    #   self.ec.clear_pv()
     if action is not None:
         action.setChecked(False)
 
@@ -70,4 +73,6 @@ class MouseToolActions:
     '''
       Set a MouseMode.
     '''
+    if hasattr(self, "ec"):
+      self.ec.clear_pv()
     self.actions[tool].setChecked(True)

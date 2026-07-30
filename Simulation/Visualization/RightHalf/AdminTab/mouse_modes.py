@@ -28,7 +28,7 @@ class CreateMode(MouseMode):
   
   def on_deactivate(self):
     self._clear()
-    self.ec.preview_changed.emit([]) #Wipe preview.
+    self.ec.clear_pv()
 
   def on_press(self, pos):
     self.curr_pos = Point(pos)
@@ -46,7 +46,7 @@ class CreateMode(MouseMode):
     if self.can_finish:
       self.ec.add_man_area(self.curr_points)
       self._clear()
-      self.ec.preview_changed.emit([]) #Wipe preview
+      self.ec.clear_pv()
 
   @property
   def can_finish(self):
@@ -119,6 +119,10 @@ class SelectMode(MouseMode):
     super().__init__()
     self.ec = ec
 
+  def on_deactivate(self):
+    self.ec.selected = None
+    self.ec.clear_pv()
+
   def on_move(self, pos):
     '''
       Highlight the currently hovered polygon, iff None is selected.
@@ -128,7 +132,7 @@ class SelectMode(MouseMode):
     elif self._top_ao(pos) is not None:
       self.ec.preview_changed.emit(self._get_mode_artist())
     else:
-      self.ec.preview_changed.emit([])
+      self.ec.clear_pv()
 
   def on_press(self, pos):
     top_ao = self._top_ao(pos)
@@ -147,8 +151,10 @@ class SelectMode(MouseMode):
     else:
       self.ec.selected.polygon = translate(self.ec.selected.polygon, *delta)
       #Update polygon itself and selection highlighter rendering
-      self.ec.changed.emit()
+      self.ec.draft_changed.emit()
       self.ec.preview_changed.emit(self._get_mode_artist())
+
+  #def _set_no_selection
 
   def _top_ao(self, pos) -> AreaObject | None:
     '''
