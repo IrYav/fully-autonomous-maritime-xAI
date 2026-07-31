@@ -1,13 +1,22 @@
 
+from enum import Enum, auto
+
+import numpy as np
 from matplotlib.patches import PathPatch
 from shapely import LineString, Point, Polygon
-from shapely.affinity import translate
+from shapely.affinity import rotate, scale, translate
 
 from Simulation.Environment.environment import Points
 from Simulation.Visualization.Mouse.mouse_mode import MouseMode
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import AreaObject
 from Simulation.Visualization.RightHalf.AdminTab.editor_controller import EditorController
 from Simulation.Visualization.VisHelpers.helpers import line_patch
+
+
+class TransformMode(Enum):
+  MOVE = auto()
+  ROTATE = auto()
+  SCALE = auto()
 
 
 class CreateMode(MouseMode):
@@ -118,8 +127,18 @@ class SelectMode(MouseMode):
   def __init__(self, ec: EditorController):
     super().__init__()
     self.ec = ec
+    self.transform_mode = TransformMode.MOVE
+    self._drag_start_pos: np.ndarray | None = None
+    self._drag_last_pos: np.ndarray | None = None
+    self._start_polygon: Polygon | None = None
+    self._start_centroid: Point | None = None
+    self._start_distance: float = 0.0
+
+  def set_transform_mode(self, mode: TransformMode):
+    self.transform_mode = mode
 
   def on_deactivate(self):
+    self._clear_drag_state()
     self.ec.selected = None
     self.ec.clear_pv()
 
@@ -143,16 +162,82 @@ class SelectMode(MouseMode):
       self.ec.preview_changed.emit(self._get_mode_artist())
 
   def on_drag_begin(self, pos):
-    self.ec.selected = self._top_ao(pos)
+    if self.ec.selected is None:
+      self.ec.selected = self._top_ao(pos)
+    if self.ec.selected is None:
+      return
+
+    self._drag_start_pos = np.asarray(pos, dtype=float)
+    self._drag_last_pos = self._drag_start_pos.copy()
+    self._start_polygon = self.ec.selected.polygon
+    self._start_centroid = self._start_polygon.centroid
+    self._start_distance = self._distance_to_centroid(self._drag_start_pos)
 
   def on_drag(self, delta):
     if self.ec.selected is None:
       return
-    else:
-      self.ec.selected.polygon = translate(self.ec.selected.polygon, *delta)
-      #Update polygon itself and selection highlighter rendering
-      self.ec.draft_changed.emit()
-      self.ec.preview_changed.emit(self._get_mode_artist())
+
+    delta_arr = np.asarray(delta, dtype=float)
+    self._drag_last_pos = self._drag_last_pos + delta_arr if self._drag_last_pos is not None else delta_arr
+
+    if self.transform_mode is TransformMode.MOVE:
+      self.ec.selected.polygon = translate(self.ec.selected.polygon, *delta_arr)
+    elif self.transform_mode is TransformMode.ROTATE:
+      if self._start_centroid is None or self._drag_start_pos is None:
+        return
+      angle_start = self._angle_to_centroid(self._drag_start_pos)
+      angle_current = self._angle_to_centroid(self._drag_last_pos)
+      delta_angle = angle_current - angle_start
+      self.ec.selected.polygon = rotate(
+        self._start_polygon,
+        delta_angle,
+        origin=self._start_centroid,
+        use_radians=True,
+      )
+    elif self.transform_mode is TransformMode.SCALE:
+      if self._start_centroid is None or self._drag_start_pos is None:
+        return
+      start_vector = self._drag_start_pos - np.asarray((self._start_centroid.x, self._start_centroid.y), dtype=float)
+      current_vector = self._drag_last_pos - np.asarray((self._start_centroid.x, self._start_centroid.y), dtype=float)
+      start_length = float(np.linalg.norm(start_vector))
+      if start_length == 0:
+        return
+      factor = float(np.linalg.norm(current_vector)) / start_length
+      self.ec.selected.polygon = scale(
+        self._start_polygon,
+        xfact=factor,
+        yfact=factor,
+        origin=self._start_centroid,
+      )
+
+    self.ec.draft_changed.emit()
+    self.ec.preview_changed.emit(self._get_mode_artist())
+
+  def on_drag_end(self, pos):
+    self._clear_drag_state()
+
+  def on_release(self, pos):
+    self._clear_drag_state()
+
+  def _clear_drag_state(self):
+    self._drag_start_pos = None
+    self._drag_last_pos = None
+    self._start_polygon = None
+    self._start_centroid = None
+    self._start_distance = 0.0
+
+  def _distance_to_centroid(self, pos: np.ndarray) -> float:
+    if self._start_centroid is None:
+      return 0.0
+    centroid = np.asarray((self._start_centroid.x, self._start_centroid.y), dtype=float)
+    return float(np.linalg.norm(pos - centroid))
+
+  def _angle_to_centroid(self, pos: np.ndarray) -> float:
+    if self._start_centroid is None:
+      return 0.0
+    centroid = np.asarray((self._start_centroid.x, self._start_centroid.y), dtype=float)
+    v = pos - centroid
+    return float(np.arctan2(v[1], v[0]))
 
   #def _set_no_selection
 

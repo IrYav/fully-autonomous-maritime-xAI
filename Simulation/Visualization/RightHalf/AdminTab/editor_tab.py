@@ -9,7 +9,7 @@ from matplotlib.patches import PathPatch
 
 from Simulation.Visualization.Mouse.mouse_tool_actions import MouseToolActions, Tool
 from Simulation.Visualization.RightHalf.AdminTab.editor_controller import EditorController
-from Simulation.Visualization.RightHalf.AdminTab.mouse_modes import CreateMode
+from Simulation.Visualization.RightHalf.AdminTab.mouse_modes import CreateMode, TransformMode
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import Material
 
 from typing import TYPE_CHECKING
@@ -140,9 +140,39 @@ class EditorTab(QWidget):
     self.delete.clicked.connect(self.ec.on_delete)
     self.delete.setEnabled(False) # Nothing selected on start
 
+    self.transform_group = QButtonGroup(section)
+    self.transform_group.setExclusive(True)
+
+    self.move_action = QRadioButton("Move")
+    self.rotate_action = QRadioButton("Rotate")
+    self.scale_action = QRadioButton("Scale")
+
+    self.transform_group.addButton(self.move_action)
+    self.transform_group.addButton(self.rotate_action)
+    self.transform_group.addButton(self.scale_action)
+
+    self.move_action.setChecked(True)
+    self.move_action.toggled.connect(
+      lambda checked: self.mta.modes[Tool.SELECT].set_transform_mode(
+        TransformMode.MOVE if checked else TransformMode.MOVE
+      )
+    )
+    self.rotate_action.toggled.connect(
+      lambda checked: self.mta.modes[Tool.SELECT].set_transform_mode(
+        TransformMode.ROTATE if checked else TransformMode.MOVE
+      )
+    )
+    self.scale_action.toggled.connect(
+      lambda checked: self.mta.modes[Tool.SELECT].set_transform_mode(
+        TransformMode.SCALE if checked else TransformMode.MOVE
+      )
+    )
+
     group_layout.addWidget(self.select)
+    group_layout.addWidget(self.move_action)
+    group_layout.addWidget(self.rotate_action)
+    group_layout.addWidget(self.scale_action)
     group_layout.addWidget(self.delete)
-    #TODO Rotate and scale
     return section
 
   def _bottom_buttons(self) -> QWidget:

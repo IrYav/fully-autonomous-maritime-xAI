@@ -69,7 +69,6 @@ class EditorController(QObject):
     self.draft_changed.emit()
     self.preview_changed.emit([]) # Remove the selected marker
 
-
   def on_commit(self):
     new_env = self.draft.draft_to_env(self.env)
     self._on_commit(new_env)
