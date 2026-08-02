@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from copy import deepcopy
 
 import numpy as np
 from shapely import Point, Polygon, LineString
@@ -8,6 +9,7 @@ from PySide6.QtCore import QObject, Signal
 from Simulation.Environment.environment import Environment, island
 from Simulation.Environment.agent import Ship
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import AreaObject, DraftShip, Material, EnvironmentDraft
+from Simulation.Visualization.RightHalf.AdminTab.reset import ResetState
 
 
 class EditorController(QObject):
@@ -29,6 +31,7 @@ class EditorController(QObject):
     self._on_commit = on_commit
     self._selected = None
     self.material = Material.LAND
+    self.reset = ResetState()
 
   #--- Managed properties ---
   @property
@@ -72,7 +75,52 @@ class EditorController(QObject):
 
   def on_commit(self):
     new_env = self.draft.draft_to_env(self.env)
-    self._on_commit(new_env, self.draft.ship)
+    self._on_commit(new_env, self.draft.ship, new_episode=False)
+
+  #--- Reset point API ---
+  def set_reset_state(self):
+    """Save the currently edited environment as the episode reset state."""
+    if self.env is None:
+      return
+    env = self.draft.draft_to_env(self.env, update_draft=False)
+    self.reset.env = deepcopy(env)
+
+  def set_reset_ship(self):
+    """Save the currently edited ship pose as the episode reset state."""
+    if self.draft.ship is None:
+      return
+    self.reset.ship_state = deepcopy(self.draft.ship.state)
+    self.reset.ship_params = deepcopy(self.draft.ship.params)
+
+  def set_reset(self):
+    self.set_reset_state()
+    self.set_reset_ship()
+
+  def set_episode_reset(self, env: Environment, ship: Ship):
+    """Record the initial state of a newly-created episode."""
+    self.reset = ResetState(deepcopy(env), deepcopy(ship.state), deepcopy(ship.params))
+
+  def commit_reset_state(self):
+    if self.reset.env is None or self.env is None:
+      return
+    current_ship = self.draft.ship
+    self._on_commit(deepcopy(self.reset.env), current_ship, new_episode=False)
+
+  def commit_reset_ship(self):
+    if self.reset.ship_state is None or self.env is None:
+      return
+    ship = DraftShip(deepcopy(self.reset.ship_state), deepcopy(self.reset.ship_params))
+    self._on_commit(
+      self.draft.draft_to_env(self.env, update_draft=False),
+      ship,
+      new_episode=False,
+    )
+
+  def reset_all(self):
+    if self.reset.env is None or self.reset.ship_state is None:
+      return
+    ship = DraftShip(deepcopy(self.reset.ship_state), deepcopy(self.reset.ship_params))
+    self._on_commit(deepcopy(self.reset.env), ship, new_episode=False)
 
   def can_delete(self) -> tuple[bool, str]:
     ao = self.selected

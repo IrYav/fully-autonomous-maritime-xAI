@@ -37,10 +37,10 @@ class InteractiveController(BaseController):
     self._setup_buttons()
     self.new_training_instance()
 
-  def new_training_instance(self, env: Environment | None = None, ship=None):
+  def new_training_instance(self, env: Environment | None = None, ship=None, new_episode=True):
     pre_made_ship = ship.as_ship() if ship is not None else None
     super().new_training_instance(pre_made_env=env, pre_made_ship=pre_made_ship)
-    self.viewer.set_sim_state(self.sim_state)
+    self.viewer.set_sim_state(self.sim_state, new_episode=new_episode)
     self.viewer.set_lviews(self.lview)
     self.viewer.set_gviews(self.gview)
     self.viewer.set_state_vector(self._get_state_dict())

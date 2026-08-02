@@ -165,10 +165,12 @@ class EnvironmentViewer(QWidget):
     layout.addWidget(self.tabs)
 
   # ---------- Public API ----------
-  def set_sim_state(self, sim_state : SimulationState):
+  def set_sim_state(self, sim_state : SimulationState, new_episode=True):
     self.ttraj = Polygon() #Wipe old path.
     self.sim_state = sim_state
     self.ec.set_env(sim_state.env, sim_state.ship)
+    if new_episode:
+      self.ec.set_episode_reset(sim_state.env, sim_state.ship)
     self._draw_trajectory(get_ship_polygon(self.sim_state.ship)) # Only current pos.
     self._render()
     self._set_ax_lims()

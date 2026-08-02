@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-  QAbstractButton, QButtonGroup, QGroupBox, QHBoxLayout, QPushButton, QRadioButton, QToolButton, QVBoxLayout,
+  QAbstractButton, QButtonGroup, QGridLayout, QGroupBox, QHBoxLayout, QPushButton, QRadioButton, QToolButton, QVBoxLayout,
   QWidget
   )
 from matplotlib.patches import PathPatch
@@ -11,6 +11,7 @@ from Simulation.Visualization.Mouse.mouse_tool_actions import MouseToolActions, 
 from Simulation.Visualization.RightHalf.AdminTab.editor_controller import EditorController
 from Simulation.Visualization.RightHalf.AdminTab.mouse_modes import CreateMode, TransformMode
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import Material
+from Simulation.Visualization.RightHalf.AdminTab.reset import reset_ship, reset_state
 
 from typing import TYPE_CHECKING
 
@@ -34,6 +35,7 @@ class EditorTab(QWidget):
 
     sections.addWidget(self._islands_section())
     sections.addWidget(self._selection_section())
+    sections.addWidget(self._reset_section())
     sections.addStretch(1)
     sections.addWidget(self._bottom_buttons())
 
@@ -187,6 +189,31 @@ class EditorTab(QWidget):
 
     section_layout.addWidget(self.commit)
 
+    return section
+
+  def _reset_section(self) -> QWidget:
+    section = QGroupBox("Reset")
+    layout = QGridLayout(section)
+
+    self.set_state = QPushButton("Set State")
+    self.set_ship = QPushButton("Set Ship")
+    self.reset_state = QPushButton("Reset State")
+    self.reset_ship = QPushButton("Reset Ship")
+    self.reset_all = QPushButton("Reset All")
+
+    layout.addWidget(self.set_state,   0, 0)
+    layout.addWidget(self.reset_state, 0, 1)
+
+    layout.addWidget(self.set_ship,    1, 0)
+    layout.addWidget(self.reset_ship,  1, 1)
+
+    layout.addWidget(self.reset_all,   2, 0, 1, 2)
+
+    self.set_state.clicked.connect(self.ec.set_reset_state)
+    self.set_ship.clicked.connect(self.ec.set_reset_ship)
+    self.reset_state.clicked.connect(lambda: reset_state(self.ec))
+    self.reset_ship.clicked.connect(lambda: reset_ship(self.ec))
+    self.reset_all.clicked.connect(self.ec.reset_all)
     return section
   
   def _connect_signals(self):
