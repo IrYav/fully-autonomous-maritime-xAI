@@ -6,7 +6,8 @@ from shapely import Point, Polygon, LineString
 from PySide6.QtCore import QObject, Signal
 
 from Simulation.Environment.environment import Environment, island
-from Simulation.Visualization.RightHalf.AdminTab.draft_model import AreaObject, Material, EnvironmentDraft
+from Simulation.Environment.agent import Ship
+from Simulation.Visualization.RightHalf.AdminTab.draft_model import AreaObject, DraftShip, Material, EnvironmentDraft
 
 
 class EditorController(QObject):
@@ -71,13 +72,15 @@ class EditorController(QObject):
 
   def on_commit(self):
     new_env = self.draft.draft_to_env(self.env)
-    self._on_commit(new_env)
+    self._on_commit(new_env, self.draft.ship)
 
   def can_delete(self) -> tuple[bool, str]:
     ao = self.selected
 
     if ao is None:
       return False, "None selected."
+    elif not isinstance(ao, AreaObject):
+      return False, "The ship cannot be deleted."
     elif ao.material is Material.END:
       #We require another End AO. 
       if any(
@@ -96,9 +99,9 @@ class EditorController(QObject):
     self.draft.add(AreaObject(self.draft.next_id, polygon, self.material))
     self.draft_changed.emit()
 
-  def set_env(self, env: Environment | None):
+  def set_env(self, env: Environment | None, ship: Ship | None = None):
     if env is not None:
-      self.draft = EnvironmentDraft.draft_from_env(env)
+      self.draft = EnvironmentDraft.draft_from_env(env, ship)
       self.env = env
     else:
       self.draft = EnvironmentDraft() # Empty container.
@@ -106,7 +109,14 @@ class EditorController(QObject):
     self.draft_changed.emit()
 
   def to_front(self, ao: AreaObject):
-    self.draft.move_to_front(ao.id)
+    if isinstance(ao, AreaObject):
+      self.draft.move_to_front(ao.id)
+
+  def sync_ship(self, ship: Ship):
+    """Refresh the clickable draft ship from the live simulation ship."""
+    if self.draft.ship is not None:
+      self.draft.ship = DraftShip.from_ship(ship)
+      self.draft_changed.emit()
 
   def set_selected(self, ao: AreaObject | None):
     self._selected = ao

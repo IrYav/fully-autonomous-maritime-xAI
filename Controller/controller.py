@@ -19,7 +19,8 @@ class BaseController:
     
   def new_training_instance(self, 
                             difficulty: Difficulty = None, 
-                            pre_made_env: Environment | None = None):
+                            pre_made_env: Environment | None = None,
+                            pre_made_ship: agent.Ship | None = None):
     
     if difficulty is None:
       difficulty = final_diff()
@@ -31,6 +32,11 @@ class BaseController:
     if pre_made_env is None:
       ship_state = agent.get_start_state(env)
       ship = agent.Ship(ship_state, self.config.ship_params)
+    elif pre_made_ship is not None:
+      state = pre_made_ship.state
+      ship_state = agent.ShipState(
+        state.position.copy(), state.heading, 0.0)
+      ship = agent.Ship(ship_state, pre_made_ship.params)
     else:
       ship = self.sim_state.ship
 

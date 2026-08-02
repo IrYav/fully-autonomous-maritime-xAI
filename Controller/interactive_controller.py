@@ -37,8 +37,9 @@ class InteractiveController(BaseController):
     self._setup_buttons()
     self.new_training_instance()
 
-  def new_training_instance(self, env: Environment | None = None):
-    super().new_training_instance(pre_made_env=env)
+  def new_training_instance(self, env: Environment | None = None, ship=None):
+    pre_made_ship = ship.as_ship() if ship is not None else None
+    super().new_training_instance(pre_made_env=env, pre_made_ship=pre_made_ship)
     self.viewer.set_sim_state(self.sim_state)
     self.viewer.set_lviews(self.lview)
     self.viewer.set_gviews(self.gview)
@@ -54,6 +55,7 @@ class InteractiveController(BaseController):
       else:
         print(f"Collided with: {self.cols}")
 
+    self.ec.sync_ship(self.sim_state.ship)
     self.viewer.update_step(self.ship_path)
     self.viewer.set_lviews(self.lview)
     self.viewer.set_gviews(self.gview)
@@ -83,7 +85,7 @@ class InteractiveController(BaseController):
   
   def set_auto_run(self, enabled: bool):
     if enabled:
-      self.run_timer.start(100)
+      self.run_timer.start(50)
     else:
       self.run_timer.stop()
 

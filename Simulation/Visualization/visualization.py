@@ -168,7 +168,7 @@ class EnvironmentViewer(QWidget):
   def set_sim_state(self, sim_state : SimulationState):
     self.ttraj = Polygon() #Wipe old path.
     self.sim_state = sim_state
-    self.ec.set_env(sim_state.env)
+    self.ec.set_env(sim_state.env, sim_state.ship)
     self._draw_trajectory(get_ship_polygon(self.sim_state.ship)) # Only current pos.
     self._render()
     self._set_ax_lims()
@@ -254,6 +254,8 @@ class EnvironmentViewer(QWidget):
       Redraw draft.
     '''
     self._draw_draft()
+    if self.sim_state is not None:
+      self._draw_ship()
     self.canvas.draw()
   
   def set_preview(self, patches: list[PathPatch]):
@@ -383,7 +385,8 @@ class EnvironmentViewer(QWidget):
     self.artists["gradient"] = quiv
 
   def _draw_ship(self):
-    ship_poly = get_ship_polygon(self.sim_state.ship)
+    ship = self.ec.draft.ship.as_ship() if self.ec.draft.ship is not None else self.sim_state.ship
+    ship_poly = get_ship_polygon(ship)
 
     self.artists["ship"] = plot_polygon(
       ship_poly,

@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from collections.abc import Iterator
+import numpy as np
 from shapely.geometry import Polygon
 
 from Simulation.Auxilaries.shapely_aux import extract_geometries
 from Simulation.Environment.environment import Environment
+from Simulation.Environment.agent import Ship, ShipParams, ShipState, get_ship_polygon
 
 
 class Material(Enum):
@@ -40,6 +42,34 @@ class AreaObject:
 
 
 @dataclass(slots=True)
+class DraftShip:
+  """Editable copy of the ship pose used by the scenario editor."""
+
+  state: ShipState
+  params: ShipParams
+
+  @property
+  def polygon(self) -> Polygon:
+    return get_ship_polygon(Ship(self.state, self.params))
+
+  def as_ship(self, velocity: float | None = None) -> Ship:
+    state = ShipState(
+      np.array(self.state.position, dtype=float, copy=True),
+      self.state.heading,
+      self.state.velocity if velocity is None else velocity,
+    )
+    return Ship(state, self.params)
+
+  @staticmethod
+  def from_ship(ship: Ship) -> "DraftShip":
+    return DraftShip(
+      ShipState(np.array(ship.state.position, dtype=float, copy=True),
+                ship.state.heading, ship.state.velocity),
+      ship.params,
+    )
+
+
+@dataclass(slots=True)
 class EnvironmentDraft:
   """
   Editable working copy of a scenario.
@@ -54,6 +84,7 @@ class EnvironmentDraft:
 
   objects: dict[int, AreaObject] = field(default_factory=dict)
   order: list[int] = field(default_factory=list)
+  ship: DraftShip | None = None
 
   def get(self, object_id: int) -> AreaObject:
     """Return the requested object."""
@@ -97,15 +128,18 @@ class EnvironmentDraft:
     self.order.insert(0, object_id)
 
   def clear(self) -> None:
-    self.object.clear()
+    self.objects.clear()
     self.order.clear()
+    self.ship = None
 
   @staticmethod
-  def draft_from_env(env: Environment) -> EnvironmentDraft:
+  def draft_from_env(env: Environment, ship: Ship | DraftShip | None = None) -> EnvironmentDraft:
     '''
       Create a draft copy of the environment.
     '''
-    draft = EnvironmentDraft()
+    draft = EnvironmentDraft(
+      ship=ship if isinstance(ship, DraftShip) else DraftShip.from_ship(ship) if ship is not None else None
+    )
     islands = extract_geometries(env.islands,["Polygon"])
     for island in islands:
       draft.add(AreaObject(draft.next_id, island))
@@ -150,13 +184,14 @@ class EnvironmentDraft:
       old_env.boundary)
     
     if update_draft:
-      self.assign(self.draft_from_env(result))
+      self.assign(self.draft_from_env(result, self.ship))
 
     return result
 
   def assign(self, new_draft: EnvironmentDraft):
     self.objects = new_draft.objects
     self.order = new_draft.order
+    self.ship = new_draft.ship
 
   def __iter__(self) -> Iterator[AreaObject]:
     '''

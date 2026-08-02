@@ -8,7 +8,7 @@ from shapely.affinity import rotate, scale, translate
 
 from Simulation.Environment.environment import Points
 from Simulation.Visualization.Mouse.mouse_mode import MouseMode
-from Simulation.Visualization.RightHalf.AdminTab.draft_model import AreaObject
+from Simulation.Visualization.RightHalf.AdminTab.draft_model import AreaObject, DraftShip
 from Simulation.Visualization.RightHalf.AdminTab.editor_controller import EditorController
 from Simulation.Visualization.VisHelpers.helpers import line_patch
 
@@ -181,20 +181,29 @@ class SelectMode(MouseMode):
     self._drag_last_pos = self._drag_last_pos + delta_arr if self._drag_last_pos is not None else delta_arr
 
     if self.transform_mode is TransformMode.MOVE:
-      self.ec.selected.polygon = translate(self.ec.selected.polygon, *delta_arr)
+      if isinstance(self.ec.selected, DraftShip):
+        self.ec.selected.state.position = self.ec.selected.state.position + delta_arr
+      else:
+        self.ec.selected.polygon = translate(self.ec.selected.polygon, *delta_arr)
     elif self.transform_mode is TransformMode.ROTATE:
       if self._start_centroid is None or self._drag_start_pos is None:
         return
       angle_start = self._angle_to_centroid(self._drag_start_pos)
       angle_current = self._angle_to_centroid(self._drag_last_pos)
       delta_angle = angle_current - angle_start
-      self.ec.selected.polygon = rotate(
-        self._start_polygon,
-        delta_angle,
-        origin=self._start_centroid,
-        use_radians=True,
-      )
+      if isinstance(self.ec.selected, DraftShip):
+        #Ship rotation is treated differently, we set the angle rather than rotating the polygon.
+        self.ec.selected.state.heading = angle_current
+      else:
+        self.ec.selected.polygon = rotate(
+          self._start_polygon,
+          delta_angle,
+          origin=self._start_centroid,
+          use_radians=True,
+        )
     elif self.transform_mode is TransformMode.SCALE:
+      if isinstance(self.ec.selected, DraftShip):
+        return
       if self._start_centroid is None or self._drag_start_pos is None:
         return
       start_vector = self._drag_start_pos - np.asarray((self._start_centroid.x, self._start_centroid.y), dtype=float)
@@ -241,13 +250,15 @@ class SelectMode(MouseMode):
 
   #def _set_no_selection
 
-  def _top_ao(self, pos) -> AreaObject | None:
+  def _top_ao(self, pos) -> AreaObject | DraftShip | None:
     '''
       Returns first `AreaObject` from the top (or `None`)
     '''
     pos = Point(pos)
 
-    #First the draft
+    if self.ec.draft.ship is not None and pos.within(self.ec.draft.ship.polygon):
+      return self.ec.draft.ship
+
     for ao in reversed(self.ec.draft):
       if pos.within(ao.polygon):
         return ao
@@ -260,4 +271,4 @@ class SelectMode(MouseMode):
       return [line_patch(
         self.ec.selected.polygon.exterior,
         color="#0072B2",
-      )] 
+      )]
