@@ -5,6 +5,7 @@ from matplotlib.patches import PathPatch
 import numpy as np
 import matplotlib.tri as mtri
 from matplotlib.figure import Figure
+from matplotlib.transforms import Bbox
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -32,6 +33,7 @@ from Simulation.Visualization.VisHelpers.helpers import pretty_str
 
 
 class EnvironmentViewer(QWidget):
+  SCREENSHOT_MAX_EDGE = 2048
   def __init__(self, ec: EditorController):
     super().__init__()
 
@@ -259,6 +261,33 @@ class EnvironmentViewer(QWidget):
     if self.sim_state is not None:
       self._draw_ship()
     self.canvas.draw()
+
+  def export_boundary_screenshot(self, path: str) -> None:
+    """Render a sharp PNG containing exactly the current environment boundary."""
+    if self.sim_state is None or self.sim_state.env is None:
+      raise RuntimeError("There is no environment to export.")
+
+    xmin, ymin, xmax, ymax = self.sim_state.env.boundary.bounds
+    corners = self.ax.transData.transform([[xmin, ymin], [xmax, ymax]])
+    display_bbox = Bbox.from_extents(
+      corners[:, 0].min(), corners[:, 1].min(),
+      corners[:, 0].max(), corners[:, 1].max(),
+    )
+    bbox_inches = display_bbox.transformed(self.fig.dpi_scale_trans.inverted())
+    if bbox_inches.width <= 0 or bbox_inches.height <= 0:
+      raise RuntimeError("The environment boundary has no renderable area.")
+
+    export_dpi = self.SCREENSHOT_MAX_EDGE / max(
+      bbox_inches.width, bbox_inches.height
+    )
+    self.fig.savefig(
+      path,
+      format="png",
+      dpi=export_dpi,
+      bbox_inches=bbox_inches,
+      pad_inches=0,
+      facecolor=self.fig.get_facecolor(),
+    )
   
   def set_preview(self, patches: list[PathPatch]):
     '''

@@ -3,7 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
   QAbstractButton, QButtonGroup, QGridLayout, QGroupBox, QHBoxLayout, QPushButton, QRadioButton, QToolButton, QVBoxLayout,
-  QWidget
+  QWidget, QFileDialog, QMessageBox
   )
 from matplotlib.patches import PathPatch
 
@@ -36,6 +36,7 @@ class EditorTab(QWidget):
     sections.addWidget(self._islands_section())
     sections.addWidget(self._selection_section())
     sections.addWidget(self._reset_section())
+    sections.addWidget(self._scenario_section())
     sections.addStretch(1)
     sections.addWidget(self._bottom_buttons())
 
@@ -190,6 +191,55 @@ class EditorTab(QWidget):
     section_layout.addWidget(self.commit)
 
     return section
+
+  def _scenario_section(self) -> QWidget:
+    section = QGroupBox("Scenario")
+    layout = QHBoxLayout(section)
+
+    self.save_scenario = QPushButton("Save Scenario")
+    self.load_scenario = QPushButton("Load Scenario")
+    self.export_screenshot = QPushButton("Export Screenshot")
+    layout.addWidget(self.save_scenario)
+    layout.addWidget(self.load_scenario)
+    layout.addWidget(self.export_screenshot)
+
+    self.save_scenario.clicked.connect(self._on_save_scenario)
+    self.load_scenario.clicked.connect(self._on_load_scenario)
+    self.export_screenshot.clicked.connect(self._on_export_screenshot)
+    return section
+
+  def _on_save_scenario(self) -> None:
+    path, _ = QFileDialog.getSaveFileName(
+      self, "Save Scenario", "scenario.json", "Scenario files (*.json);;All files (*)"
+    )
+    if not path:
+      return
+    try:
+      self.ec.save_scenario(path)
+    except (OSError, ValueError) as exc:
+      QMessageBox.critical(self, "Could not save scenario", str(exc))
+
+  def _on_load_scenario(self) -> None:
+    path, _ = QFileDialog.getOpenFileName(
+      self, "Load Scenario", "", "Scenario files (*.json);;All files (*)"
+    )
+    if not path:
+      return
+    try:
+      self.ec.load_scenario(path)
+    except (OSError, ValueError, TypeError) as exc:
+      QMessageBox.critical(self, "Could not load scenario", str(exc))
+
+  def _on_export_screenshot(self) -> None:
+    path, _ = QFileDialog.getSaveFileName(
+      self, "Export Screenshot", "scenario.png", "PNG images (*.png);;All files (*)"
+    )
+    if not path:
+      return
+    try:
+      self.env_view.export_boundary_screenshot(path)
+    except (OSError, ValueError, RuntimeError) as exc:
+      QMessageBox.critical(self, "Could not export screenshot", str(exc))
 
   def _reset_section(self) -> QWidget:
     section = QGroupBox("Reset")

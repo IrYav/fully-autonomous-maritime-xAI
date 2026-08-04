@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from copy import deepcopy
+import json
 
 import numpy as np
 from shapely import Point, Polygon, LineString
@@ -10,6 +11,7 @@ from Simulation.Environment.environment import Environment, island
 from Simulation.Environment.agent import Ship
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import AreaObject, DraftShip, Material, EnvironmentDraft
 from Simulation.Visualization.RightHalf.AdminTab.reset import ResetState
+from Simulation.Visualization.RightHalf.AdminTab.scenario_io import draft_from_dict, draft_to_dict
 
 
 class EditorController(QObject):
@@ -76,6 +78,23 @@ class EditorController(QObject):
   def on_commit(self):
     new_env = self.draft.draft_to_env(self.env)
     self._on_commit(new_env, self.draft.ship, new_episode=False)
+
+  def save_scenario(self, path):
+    """Save the current editor draft as readable JSON."""
+    with open(path, "w", encoding="utf-8") as scenario_file:
+      json.dump(draft_to_dict(self.draft), scenario_file, indent=2)
+      scenario_file.write("\n")
+
+  def load_scenario(self, path):
+    """Load a JSON draft and refresh the editor without committing it."""
+    with open(path, "r", encoding="utf-8") as scenario_file:
+      loaded = draft_from_dict(json.load(scenario_file))
+    self.draft.assign(loaded)
+    self.selected = None
+    self.on_commit() # User expects load to commit.
+    self.draft_changed.emit()
+    self.preview_changed.emit([])
+    self.selected_changed.emit()
 
   #--- Reset point API ---
   def set_reset_state(self):
