@@ -81,6 +81,9 @@ class ShipEnv(gym.Env):
   # =================================================
 
   def reset(self, seed=None, options=None):
+    '''
+      Note, the `seed` is currently not used, same seeds will yield different scenarios.
+    '''
     super().reset(seed=seed)
     self.controller.new_training_instance(self.difficulty)
     self.grad_align = []
