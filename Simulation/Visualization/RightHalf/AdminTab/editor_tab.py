@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-  QAbstractButton, QButtonGroup, QGridLayout, QGroupBox, QHBoxLayout, QPushButton, QRadioButton, QToolButton, QVBoxLayout,
+  QAbstractButton, QAbstractSpinBox, QButtonGroup, QDoubleSpinBox, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QPushButton, QRadioButton, QToolButton, QVBoxLayout,
   QWidget, QFileDialog, QMessageBox
   )
 from matplotlib.patches import PathPatch
@@ -10,7 +10,10 @@ from matplotlib.patches import PathPatch
 from Simulation.Visualization.Mouse.mouse_tool_actions import MouseToolActions, Tool
 from Simulation.Visualization.RightHalf.AdminTab.editor_controller import EditorController
 from Simulation.Visualization.RightHalf.AdminTab.mouse_modes import CreateMode, TransformMode
-from Simulation.Visualization.RightHalf.AdminTab.draft_model import Material
+from Simulation.Visualization.RightHalf.AdminTab.draft_model import (
+  Material, heading_degrees_to_radians, heading_radians_to_degrees,
+  normalized_velocity_to_simulation,
+)
 from Simulation.Visualization.RightHalf.AdminTab.reset import reset_ship, reset_state
 
 from typing import TYPE_CHECKING
@@ -35,6 +38,7 @@ class EditorTab(QWidget):
 
     sections.addWidget(self._islands_section())
     sections.addWidget(self._selection_section())
+    sections.addWidget(self._ship_section())
     sections.addWidget(self._reset_section())
     sections.addWidget(self._scenario_section())
     sections.addStretch(1)
@@ -186,11 +190,82 @@ class EditorTab(QWidget):
     self.commit.setText("Commit changes and recalculate everything.")
     self.commit.setToolTip("Without a commit, " \
       "the agent won't see any changes in the environment")
-    self.commit.clicked.connect(self.ec.on_commit)
+    self.commit.clicked.connect(self._on_commit_clicked)
 
     section_layout.addWidget(self.commit)
 
     return section
+
+  def _ship_section(self) -> QWidget:
+    section = QGroupBox("Ship")
+    layout = QFormLayout(section)
+
+    self.ship_x = self._number_input()
+    self.ship_y = self._number_input()
+    self.ship_heading = self._number_input()
+    self.ship_velocity = self._number_input()
+
+    layout.addRow("Position X", self.ship_x)
+    layout.addRow("Position Y", self.ship_y)
+    layout.addRow("Heading (degrees)", self.ship_heading)
+    layout.addRow("Velocity (× max)", self.ship_velocity)
+
+    for field in (self.ship_x, self.ship_y, self.ship_heading, self.ship_velocity):
+      field.editingFinished.connect(self._on_ship_field_edited)
+
+    self._refresh_ship_controls()
+    return section
+
+  @staticmethod
+  def _number_input() -> QDoubleSpinBox:
+    field = QDoubleSpinBox()
+    field.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+    # QDoubleSpinBox rejects NaN/infinity; this wide finite range also keeps
+    # the editor from imposing a simulation-specific practical limit.
+    field.setRange(-1e100, 1e100)
+    field.setDecimals(12)
+    field.setSingleStep(1.0)
+    return field
+
+  def _refresh_ship_controls(self) -> None:
+    draft = getattr(self.ec, "draft", None)
+    ship = getattr(draft, "ship", None)
+    fields = (self.ship_x, self.ship_y, self.ship_heading, self.ship_velocity)
+    enabled = ship is not None
+    for field in fields:
+      field.setEnabled(enabled)
+      field.blockSignals(True)
+    if ship is not None:
+      self.ship_x.setValue(float(ship.state.position[0]))
+      self.ship_y.setValue(float(ship.state.position[1]))
+      self.ship_heading.setValue(heading_radians_to_degrees(ship.state.heading))
+      self.ship_velocity.setValue(
+        float(ship.state.velocity) / float(ship.params.max_velocity)
+      )
+    for field in fields:
+      field.blockSignals(False)
+
+  def _on_ship_field_edited(self) -> None:
+    self._apply_ship_controls()
+
+  def _apply_ship_controls(self) -> None:
+    draft = getattr(self.ec, "draft", None)
+    ship = getattr(draft, "ship", None)
+    if ship is None:
+      return
+    heading = self.ship_heading.value() % 360.0
+    self.ship_heading.setValue(heading)
+    ship.state.position[0] = self.ship_x.value()
+    ship.state.position[1] = self.ship_y.value()
+    ship.state.heading = heading_degrees_to_radians(heading)
+    ship.state.velocity = normalized_velocity_to_simulation(
+      self.ship_velocity.value(), ship.params.max_velocity
+    )
+    self.ec.draft_changed.emit()
+
+  def _on_commit_clicked(self) -> None:
+    self._apply_ship_controls()
+    self.ec.on_commit()
 
   def _scenario_section(self) -> QWidget:
     section = QGroupBox("Scenario")
@@ -275,6 +350,7 @@ class EditorTab(QWidget):
     self.ec.selected_changed.connect(self._set_delete_toggle)
 
   def _on_changed_signal(self):
+    self._refresh_ship_controls()
     self.env_view.update_draft()
     self.finish.setEnabled(self.mta.mouse_tool.can_finish)
 

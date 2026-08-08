@@ -5,10 +5,37 @@ from enum import Enum, auto
 from collections.abc import Iterator
 import numpy as np
 from shapely.geometry import Polygon
+import math
 
 from Simulation.Auxilaries.shapely_aux import extract_geometries
 from Simulation.Environment.environment import Environment
 from Simulation.Environment.agent import Ship, ShipParams, ShipState, get_ship_polygon
+
+
+def normalize_heading_degrees(angle: float) -> float:
+  """Return a finite heading in mathematical degrees in ``[0, 360)``."""
+  if not math.isfinite(angle):
+    raise ValueError("Heading must be finite.")
+  return angle % 360.0
+
+
+def heading_degrees_to_radians(angle: float) -> float:
+  """Convert an editor heading in degrees to the simulation's radians."""
+  return math.radians(normalize_heading_degrees(angle))
+
+
+def heading_radians_to_degrees(angle: float) -> float:
+  """Convert a simulation heading to normalized editor degrees."""
+  return normalize_heading_degrees(math.degrees(angle))
+
+
+def normalized_velocity_to_simulation(value: float, max_velocity: float) -> float:
+  """Convert the editor's velocity multiplier to simulation units."""
+  if not math.isfinite(value):
+    raise ValueError("Velocity must be finite.")
+  if not math.isfinite(max_velocity) or max_velocity <= 0:
+    raise ValueError("Maximum velocity must be finite and positive.")
+  return value * max_velocity
 
 
 class Material(Enum):

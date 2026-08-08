@@ -35,7 +35,7 @@ class BaseController:
     elif pre_made_ship is not None:
       state = pre_made_ship.state
       ship_state = agent.ShipState(
-        state.position.copy(), state.heading, 0.0)
+        state.position.copy(), state.heading, state.velocity)
       ship = agent.Ship(ship_state, pre_made_ship.params)
     else:
       ship = self.sim_state.ship
