@@ -77,7 +77,8 @@ class InteractiveController(BaseController):
     action, _ = self.model.predict(obs, deterministic=True)
     action = agent.Action(*action)
     _, colls = self.simulate_step(action, self.config.dt) # Important, use fixed dt.
-    if not colls == [] and self.run_mode is RunMode.POLICY_STOP:
+    reached_step_limit = self.sim_state.steps == self.config.max_steps
+    if (colls or reached_step_limit) and self.run_mode is RunMode.POLICY_STOP:
       self.auto_run.toggle()
 
   def run(self):

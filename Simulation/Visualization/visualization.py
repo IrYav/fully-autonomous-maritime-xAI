@@ -231,7 +231,10 @@ class EnvironmentViewer(QWidget):
       group.addButton(btn)
       layout.addWidget(btn)
       if label == "Policy Stop":
-        btn.setToolTip("Continue the run until collision or reaching the goal.")
+        btn.setToolTip(
+          "Auto Run stops on collision or at the maximum number of steps. "
+          "Re-enable it to continue until collision."
+        )
       
     self.sidebar_layout.addWidget(container)
 
