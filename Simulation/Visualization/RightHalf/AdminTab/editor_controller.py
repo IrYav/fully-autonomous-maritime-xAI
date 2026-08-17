@@ -33,6 +33,8 @@ class EditorController(QObject):
     self._on_commit = on_commit
     self._selected = None
     self.material = Material.LAND
+    self.env = None
+    self.draft = EnvironmentDraft()
     self.reset = ResetState()
 
   #--- Managed properties ---
@@ -76,6 +78,8 @@ class EditorController(QObject):
     self.preview_changed.emit([]) # Remove the selected marker
 
   def on_commit(self):
+    if self.env is None or self._on_commit is None:
+      return
     new_env = self.draft.draft_to_env(self.env)
     self._on_commit(new_env, self.draft.ship, new_episode=False)
 
@@ -167,9 +171,9 @@ class EditorController(QObject):
     self.draft_changed.emit()
 
   def set_env(self, env: Environment | None, ship: Ship | None = None):
+    self.env = env
     if env is not None:
       self.draft = EnvironmentDraft.draft_from_env(env, ship)
-      self.env = env
     else:
       self.draft = EnvironmentDraft() # Empty container.
       
