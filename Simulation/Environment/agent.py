@@ -3,7 +3,7 @@ from Simulation.Auxilaries.shapely_aux import flatten_polygons
 
 import numpy as np
 from shapely.geometry import Polygon, LineString
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 @dataclass
 class ShipState:
@@ -24,6 +24,15 @@ class ShipParams:
 class Ship:
   state: ShipState 
   params: ShipParams 
+
+  def copy(self) -> "Ship":
+    return replace(
+      self,
+      state=replace(
+        self.state,
+        position=self.state.position.copy()
+      )
+    )
 
 @dataclass
 class Action:
