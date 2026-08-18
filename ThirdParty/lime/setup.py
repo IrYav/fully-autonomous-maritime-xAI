@@ -16,7 +16,7 @@ setup(name='lime',
           'tqdm >= 4.29.1',
           'scikit-learn>=0.18',
           'scikit-image>=0.12',
-          'pyDOE2==1.3.0'
+          'pydoe==1.4.0'
       ],
       extras_require={
           'dev': ['pytest', 'flake8'],

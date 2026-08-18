@@ -1,0 +1,7 @@
+The code has been modified for integration with this project.
+The modifications primarily concern: 
+Fixing pyDOE2 dependency
+[TODO]
+
+For the complete modifications relative to the imported upstream
+version, refer to Git commit <1d20368c20f2029a7d16d2b30dd42b0b4b8f319f>.
