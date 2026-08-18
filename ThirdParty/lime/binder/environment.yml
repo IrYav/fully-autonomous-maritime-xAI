@@ -10,7 +10,7 @@ dependencies:
   - scipy
   - scikit-learn
   - scikit-image
-  - pyDOE2
+  - pydoe
   # for testing
   - flake8
   - pytest

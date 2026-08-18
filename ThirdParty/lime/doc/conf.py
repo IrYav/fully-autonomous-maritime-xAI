@@ -31,7 +31,7 @@ MOCK_MODULES = ['numpy', 'scipy', 'scipy.sparse', 'scipy.special',
         'sklearn.datasets', 'sklearn.ensemble', 'sklearn.cross_validation',
         'sklearn.feature_extraction', 'sklearn.feature_extraction.text',
         'sklearn.metrics', 'sklearn.naive_bayes', 'sklearn.pipeline',
-        'sklearn.utils', 'pyDOE2',]
+        'sklearn.utils', 'pydoe',]
 # for mod_name in MOCK_MODULES:
 #     sys.modules[mod_name] = mock.Mock()
 
