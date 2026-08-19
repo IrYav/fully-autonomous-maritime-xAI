@@ -11,7 +11,7 @@ from Simulation.Environment.environment import Environment, island
 from Simulation.Environment.agent import Ship
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import AreaObject, DraftShip, Material, EnvironmentDraft
 from Simulation.Visualization.RightHalf.AdminTab.reset import ResetState
-from Simulation.Visualization.RightHalf.AdminTab.scenario_io import draft_from_dict, draft_to_dict
+from Simulation.Auxilaries.io import draft_from_dict, draft_to_dict
 
 
 class EditorController(QObject):
