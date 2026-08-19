@@ -6,7 +6,7 @@ import numpy as np
 
 from Simulation.Auxilaries.ship_instances import ferry
 from Simulation.Environment.agent import ShipParams
-
+from shapely import box
 
 @dataclass
 class SimulationConfig:
@@ -81,6 +81,12 @@ class SimulationConfig:
       Returns the center point of the map.
     '''
     return (self.boundary[0] + self.boundary[1]) / 2
+
+  def get_boundary(self):
+    '''
+      Returns the boundary as a shapely box.
+    '''
+    return box(*self.boundary[0], *self.boundary[1])
 
 sim_config = SimulationConfig(
   boundary = np.array([[-2500, -2500], [2500, 2500]], dtype=float),
