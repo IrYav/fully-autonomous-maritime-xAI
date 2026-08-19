@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import fields
+import json
+from os import PathLike
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 from shapely.geometry import Polygon
 
-from Simulation.Environment.agent import ShipParams, ShipState
+from Simulation.Auxilaries.sim_config import SimulationConfig
+from Simulation.Environment.agent import Action, Ship, ShipParams, ShipState
+from Simulation.Environment.environment import Environment
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import (
   AreaObject, DraftShip, EnvironmentDraft, Material,
 )
@@ -111,3 +116,84 @@ def draft_from_dict(data: Any) -> EnvironmentDraft:
       raise ValueError("Ship position must contain two coordinates.")
     draft.ship = DraftShip(state, params)
   return draft
+
+
+def save_env_ship(
+    path: str | PathLike[str],
+    env: Environment,
+    ship: Ship,
+) -> None:
+  """Save an environment and runtime ship in the editor scenario format."""
+  path = Path(path)
+  path.parent.mkdir(parents=True, exist_ok=True)
+  draft = EnvironmentDraft.draft_from_env(env, ship)
+  with open(path, "w", encoding="utf-8") as scenario_file:
+    json.dump(draft_to_dict(draft), scenario_file, indent=2)
+    scenario_file.write("\n")
+
+def load_env_ship(
+    path: str | PathLike[str],
+    config: SimulationConfig,
+) -> tuple[Environment, Ship]:
+  """Load a scenario file as an environment and runtime ship.
+
+  Scenario files contain the editable geometry and ship, while the boundary
+  is supplied by the simulation configuration. The corridor is intentionally
+  empty because it is not part of the editor scenario format.
+  """
+  with open(path, "r", encoding="utf-8") as scenario_file:
+    draft = draft_from_dict(json.load(scenario_file))
+
+  if draft.ship is None:
+    raise ValueError("Scenario must contain a ship to load an environment and ship.")
+
+  base_env = Environment(
+    Polygon(),
+    Polygon(),
+    draft.ship.state.position.copy(),
+    Polygon(),
+    config.get_boundary(),
+  )
+  env = draft.draft_to_env(base_env, update_draft=False)
+  return env, draft.ship.as_ship()
+
+def log_steps(path, 
+              steps: list[tuple[ShipState, Action, float]]) -> None:
+  """Save a list of step logs to a npz file."""
+  states = np.asarray([
+    [
+      *step[0].position,
+      step[0].heading,
+      step[0].velocity,
+    ]
+    for step in steps
+  ], dtype=np.float32)
+
+  actions = np.asarray([
+    [
+      step[1].rudder,
+      step[1].acceleration,
+    ]
+    for step in steps
+  ], dtype=np.float32)
+
+  rewards = np.asarray([
+    step[2]
+    for step in steps
+  ], dtype=np.float32)
+
+  np.savez(
+    path,
+    states=states,
+    actions=actions,
+    rewards=rewards,
+  )
+
+def log_result(path, reward: float, steps: int, cols: list) -> None:
+  """Save the result of a simulation run."""
+  np.savez(
+    path,
+    reward=reward,
+    steps=steps,
+    cols=cols
+  )
