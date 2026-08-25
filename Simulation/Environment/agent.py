@@ -127,7 +127,7 @@ def apply_trajectory(state: ShipState, traj: Trajectory) -> ShipState:
   theta = state.heading
 
   if abs(traj.kappa) < 1e-8:
-    # Gerade
+    # Line-segment
     dx = traj.s * np.cos(theta)
     dy = traj.s * np.sin(theta)
 
@@ -135,7 +135,7 @@ def apply_trajectory(state: ShipState, traj: Trajectory) -> ShipState:
     theta_new = theta
 
   else:
-    # Kreis
+    # Circle-segment
     kappa = traj.kappa
     dtheta = traj.dtheta
 
