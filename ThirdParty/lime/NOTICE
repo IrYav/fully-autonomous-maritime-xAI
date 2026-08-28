@@ -1,6 +1,7 @@
 The code has been modified for integration with this project.
 The modifications primarily concern: 
 Fixing an outdated pyDOE2 dependency
+Fixing an IPython import
 [TODO]
 
 For the complete modifications relative to the imported upstream

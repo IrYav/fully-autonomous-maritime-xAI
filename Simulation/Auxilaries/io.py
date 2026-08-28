@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import dataclass, fields
 import json
 from os import PathLike
 from pathlib import Path
+import re
+from collections.abc import Iterator
 from typing import Any
 
 import numpy as np
 from shapely.geometry import Polygon
 
 from Simulation.Auxilaries.sim_config import SimulationConfig
-from Simulation.Environment.agent import Action, Ship, ShipParams, ShipState
+from Simulation.Environment.agent import Ship, ShipParams, ShipState
 from Simulation.Environment.environment import Environment
 from Simulation.Visualization.RightHalf.AdminTab.draft_model import (
   AreaObject, DraftShip, EnvironmentDraft, Material,
@@ -20,6 +22,15 @@ from Simulation.Visualization.RightHalf.AdminTab.draft_model import (
 
 
 SCHEMA_VERSION = 1
+
+
+@dataclass
+class Run:
+  """Decoded contents of one generated sample run."""
+
+  scenario: tuple[Environment, Ship]
+  steps: list[tuple[np.ndarray, np.ndarray, float]]
+  result: tuple[float, int, list[str]]
 
 
 def _polygon_to_dict(polygon: Polygon) -> dict[str, list[list[float]]]:
@@ -157,23 +168,100 @@ def load_env_ship(
   env = draft.draft_to_env(base_env, update_draft=False)
   return env, draft.ship.as_ship()
 
+
+def _required_npz_value(
+  data: np.lib.npyio.NpzFile, name: str, path: Path,
+) -> Any:
+  if name not in data:
+    raise ValueError(f"Run log {path} is missing '{name}'.")
+  return data[name]
+
+
+def _load_run(run_path: Path, config: SimulationConfig) -> Run:
+  scenario_path = run_path / "scenario.json"
+  steps_path = run_path / "steps.npz"
+  result_path = run_path / "result.npz"
+  for artifact in (scenario_path, steps_path, result_path):
+    if not artifact.is_file():
+      raise FileNotFoundError(f"Run {run_path} is missing '{artifact.name}'.")
+
+  scenario = load_env_ship(scenario_path, config)
+
+  try:
+    with np.load(steps_path, allow_pickle=False) as data:
+      states = _required_npz_value(data, "states", steps_path)
+      actions = _required_npz_value(data, "actions", steps_path)
+      rewards = _required_npz_value(data, "rewards", steps_path)
+  except (OSError, ValueError) as exc:
+    if isinstance(exc, ValueError) and str(exc).startswith("Run log"):
+      raise
+    raise ValueError(f"Could not read steps log {steps_path}.") from exc
+
+  if states.size == 0:
+    states = states.reshape(0, 12)
+  if actions.size == 0:
+    actions = actions.reshape(0, 2)
+  if states.ndim != 2 or states.shape[1] != 12:
+    raise ValueError(f"Steps log {steps_path} has invalid observations shape {states.shape}; expected (n, 12).")
+  if actions.ndim != 2 or actions.shape[1] != 2:
+    raise ValueError(f"Steps log {steps_path} has invalid actions shape {actions.shape}; expected (n, 2).")
+  if len(states) != len(actions) or len(states) != len(rewards):
+    raise ValueError(f"Steps log {steps_path} has mismatched states, actions, and rewards lengths.")
+
+  steps = [
+    (
+      state.copy(),
+      action.astype(float).copy(),
+      float(reward),
+    )
+    for state, action, reward in zip(states, actions, rewards)
+  ]
+
+  try:
+    with np.load(result_path, allow_pickle=False) as data:
+      reward = _required_npz_value(data, "reward", result_path)
+      step_count = _required_npz_value(data, "steps", result_path)
+      collisions = _required_npz_value(data, "cols", result_path)
+  except (OSError, ValueError) as exc:
+    if isinstance(exc, ValueError) and str(exc).startswith("Run log"):
+      raise
+    raise ValueError(f"Could not read result log {result_path}.") from exc
+
+  try:
+    reward = float(np.asarray(reward).item())
+    step_count = int(np.asarray(step_count).item())
+    collisions = np.asarray(collisions).tolist()
+  except (TypeError, ValueError) as exc:
+    raise ValueError(f"Result log {result_path} contains invalid values.") from exc
+  if not isinstance(collisions, list):
+    collisions = [collisions]
+
+  return Run(scenario, steps, (reward, step_count, collisions))
+
+
+def load_runs(path: str | PathLike[str], config: SimulationConfig) -> Iterator[Run]:
+  """Lazily yield decoded runs from a directory created by ``generate_samples``."""
+  root = Path(path)
+  run_paths = sorted(
+    (
+      child for child in root.iterdir()
+      if child.is_dir() and re.fullmatch(r"run\d+", child.name)
+    ),
+    key=lambda child: int(child.name[3:]),
+  )
+  for run_path in run_paths:
+    yield _load_run(run_path, config)
+
 def log_steps(path, 
-              steps: list[tuple[ShipState, Action, float]]) -> None:
-  """Save a list of step logs to a npz file."""
+              steps: list[tuple[np.ndarray, np.ndarray, float]]) -> None:
+  """Save observation-array, action, and reward step logs to a npz file."""
   states = np.asarray([
-    [
-      *step[0].position,
-      step[0].heading,
-      step[0].velocity,
-    ]
+    step[0]
     for step in steps
   ], dtype=np.float32)
 
   actions = np.asarray([
-    [
-      step[1].rudder,
-      step[1].acceleration,
-    ]
+    step[1]
     for step in steps
   ], dtype=np.float32)
 

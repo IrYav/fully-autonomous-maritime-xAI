@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 from Agent.Observation.rasterize import get_global_view, get_local_view
 from Simulation.Auxilaries.auxiliaries import SimulationState
 from Simulation.Auxilaries.sim_config import SimulationConfig
-
+from Simulation.Visualization.VisHelpers.helpers import pretty_str
 
 def build_observation(controller : BaseController, debugging=False):
   steps = controller.sim_state.steps
@@ -54,7 +54,8 @@ def build_observation(controller : BaseController, debugging=False):
     "heading_cos": math.cos(heading),
     "heading_sin": math.sin(heading),
     # Normalized to [-1 * k, 1] with k = max_rev_vel/max_vel. 
-    # 0 meaning no movement is more important.
+    # Usually ships are slower in reverse, so k < 1. 
+    # May prefer different treatment for k > 1 cases
     "velocity_norm": ship.state.velocity / ship.params.max_velocity,
 
     "time_elapsed_norm": steps/sim_config.max_steps,
@@ -78,6 +79,19 @@ def build_observation(controller : BaseController, debugging=False):
     "state": state_obs,
   }
 
+def feature_names(pretty = False) -> list[str]:
+  res = [
+    "ship_x_norm", "ship_y_norm",
+    "heading_cos", "heading_sin",
+    "velocity_norm", 
+    "time_elapsed_norm",
+    "rel_x_norm", "rel_y_norm",
+    "rel_angle_cos", "rel_angle_sin",
+    "end_x_norm", "end_y_norm"
+  ]
+  if pretty:
+    return list(map(pretty_str, res))
+  return res
 def dict_to_obs(d: dict[str, float]):
   '''
     Turning a dict of observations into an array, of correct order.
