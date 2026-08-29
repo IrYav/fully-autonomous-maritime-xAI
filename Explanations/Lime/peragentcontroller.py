@@ -4,9 +4,13 @@ from stable_baselines3 import PPO, SAC
 from Simulation.Auxilaries.sim_config import SimulationConfig
 
 from dataclasses import dataclass
+from collections.abc import Iterable
 
 import numpy as np
 import math
+from shapely.affinity import translate
+
+from Simulation.Environment.environment import Environment
 
 @dataclass
 class Perturbation:
@@ -46,19 +50,117 @@ class PerAgentController(AgentController):
   def __init__(self, config : SimulationConfig,
                model: PPO | SAC ):
     super().__init__(config, model)
+    self.base_perturbation : Perturbation = None
+
+  def store_base_state(self) -> Perturbation:
+    '''Store and return the current simulation state in 8D form.'''
+    map_min = np.asarray(self.config.boundary[0], dtype=float)
+    map_size = np.asarray(self.config.boundary[1], dtype=float) - map_min
+
+    def normalize_position(position):
+      return ((np.asarray(position, dtype=float) - map_min) / map_size) * 2 - 1
+
+    ship_position = normalize_position(self.sim_state.ship.state.position)
+    end_position = normalize_position(self.sim_state.env.end_poly.centroid.coords[0])
+    heading = self.sim_state.ship.state.heading
+
+    self.base_perturbation = Perturbation(
+      ship_x=float(ship_position[0]),
+      ship_y=float(ship_position[1]),
+      heading_cos=math.cos(heading),
+      heading_sin=math.sin(heading),
+      velocity=self.sim_state.ship.state.velocity / self.sim_state.ship.params.max_velocity,
+      time_elapsed=self.sim_state.steps / self.config.max_steps,
+      end_x=float(end_position[0]),
+      end_y=float(end_position[1]),
+    )
+    return self.base_perturbation
 
   def apply_perturbation(self, p: Perturbation):
+    '''Apply an 8D normalized perturbation as a fresh training instance.'''
+    map_min = np.asarray(self.config.boundary[0], dtype=float)
+    map_size = np.asarray(self.config.boundary[1], dtype=float) - map_min
 
+    def denormalize_position(x, y):
+      return (np.array([x, y], dtype=float) + 1) * map_size / 2 + map_min
+
+    ship_position = denormalize_position(p.ship_x, p.ship_y)
+    end_position = denormalize_position(p.end_x, p.end_y)
     new_ship = self.sim_state.ship.copy()
-    new_ship.state.position = [p.ship_x, p.ship_y]
+    new_ship.state.position = ship_position
     new_ship.state.heading = math.atan2(p.heading_sin, p.heading_cos)
-    new_ship.state.velocity = p.velocity
-    #sim_state stores non-normalized ones.
+    new_ship.state.velocity = p.velocity * new_ship.params.max_velocity
+
+    old_end_position = np.asarray(
+      self.sim_state.env.end_poly.centroid.coords[0], dtype=float
+    )
+    new_end_poly = translate(
+      self.sim_state.env.end_poly,
+      xoff=float(end_position[0] - old_end_position[0]),
+      yoff=float(end_position[1] - old_end_position[1]),
+    )
+    new_env = Environment(
+      self.sim_state.env.islands,
+      self.sim_state.env.corridor,
+      self.sim_state.env.start,
+      new_end_poly,
+      self.sim_state.env.boundary,
+    )
+
+    # This rebuilds the mesh, harmonic field, and observation views. It also
+    # resets the step counter, so restore the perturbed elapsed time after it.
+    self.new_training_instance(
+      pre_made_env=new_env,
+      pre_made_ship=new_ship,
+    )
     self.sim_state.steps = round(p.time_elapsed * self.config.max_steps)
     
 
-  def eval_step_perturbations(self, pers: Perturbation) -> np.ndarray:
-    #TODO
-    self.basePert = 2
-    for per in pers:
-      return
+  def eval_step_perturbations(
+      self, pers: Iterable[Perturbation]
+  ) -> np.ndarray:
+    '''Evaluate one model step for each perturbation from the same base state.
+
+    Returns an array with columns ``[rudder, acceleration, reward]``.
+    '''
+    base_state = self.store_base_state()
+    
+    pers = list(pers)
+    result = np.empty((len(pers), 3), dtype=float)
+
+    try:
+      for i, per in enumerate(pers):
+        # ``apply_perturbation`` rebuilds the training instance, including
+        # its environment-dependent mesh and field.
+        self.apply_perturbation(per)
+        step = self.model_step()
+        action = np.asarray(step["action"], dtype=float).reshape(-1)
+        result[i] = [action[0], action[1], step["reward"]]
+
+        # Reset before the next perturbation so no ship movement or elapsed
+        # time from this evaluation leaks into the following one.
+        self.apply_perturbation(base_state)
+    finally:
+      # Also restore the base state if evaluating a perturbation raises.
+      self.apply_perturbation(base_state)
+
+    return result
+
+  def eval_step_perturbation_array(
+      self, states: np.ndarray
+  ) -> np.ndarray:
+    '''
+      Does conceptually the same as `eval_step_perturbations`, but
+      allows the use of an states array of shape (n,8),
+      rather than an iterable for perturbations.
+    '''
+    states = np.asarray(states)
+
+    if states.ndim != 2 or states.shape[1] != 8:
+      raise ValueError(
+        f"Expected states with shape (n, 8), got {states.shape}."
+      )
+
+    return self.eval_step_perturbations(
+      Perturbation(*state) for state in states
+    )

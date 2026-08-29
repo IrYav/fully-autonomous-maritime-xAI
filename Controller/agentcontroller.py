@@ -118,13 +118,6 @@ class AgentController(BaseController):
 
     return self.model.predict(obs, deterministic=True)[0]
 
-  def reward_predict(self, states):
-    '''
-      Returns the reward, from applying the models
-      prediction for each of the states,
-      given the currently stored environment data. 
-    '''
-
   def generate_samples(self, path, num_step_samples: int) -> None:
     '''
       Generates and runs environments.

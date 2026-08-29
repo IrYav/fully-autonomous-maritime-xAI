@@ -14,7 +14,7 @@ from Simulation.Auxilaries.auxiliaries import SimulationState
 from Simulation.Auxilaries.sim_config import SimulationConfig
 from Simulation.Visualization.VisHelpers.helpers import pretty_str
 
-def build_observation(controller : BaseController, debugging=False):
+def build_observation(controller : BaseController, debugging=False, reduced=False):
   steps = controller.sim_state.steps
   env = controller.sim_state.env
   ship = controller.sim_state.ship 
@@ -69,6 +69,11 @@ def build_observation(controller : BaseController, debugging=False):
     "end_x_norm": end_pos_norm[0],
     "end_y_norm": end_pos_norm[1],
   }
+  if reduced:
+    state_dict = {
+      name: state_dict[name]
+      for name in feature_names(reduced=True)
+    }
   if not debugging:
     state_obs = np.array(list(state_dict.values()), dtype=np.float32)
   else:
@@ -79,7 +84,7 @@ def build_observation(controller : BaseController, debugging=False):
     "state": state_obs,
   }
 
-def feature_names(pretty = False) -> list[str]:
+def feature_names(pretty = False, reduced = False) -> list[str]:
   res = [
     "ship_x_norm", "ship_y_norm",
     "heading_cos", "heading_sin",
@@ -89,9 +94,12 @@ def feature_names(pretty = False) -> list[str]:
     "rel_angle_cos", "rel_angle_sin",
     "end_x_norm", "end_y_norm"
   ]
+  if reduced:
+    res = res[:6] + res[10:]
   if pretty:
     return list(map(pretty_str, res))
   return res
+
 def dict_to_obs(d: dict[str, float]):
   '''
     Turning a dict of observations into an array, of correct order.

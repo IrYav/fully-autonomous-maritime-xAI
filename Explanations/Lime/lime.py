@@ -34,12 +34,12 @@ class LimeExplainer():
       axis=0,
     )
     print(steps.shape)
-    train = np.stack(steps[:, 0])      
+    train = np.stack(steps[:, 0])[:, [0, 1, 2, 3, 4, 5, 10, 11]]
     print(train.shape)
 
     explainer = LimeTabularExplainer(
       train, 
-      feature_names= feature_names(pretty=True),
+      feature_names=feature_names(pretty=True, reduced=True),
       mode="regression",
     )
     return explainer
