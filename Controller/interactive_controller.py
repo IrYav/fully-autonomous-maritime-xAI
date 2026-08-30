@@ -48,7 +48,6 @@ class InteractiveController(BaseController):
 
   def simulate_step(self, action, dt):
     self.ship_path, self.cols = super().simulate_step(action, dt)
-    print(action)
     if self.cols:
       if self.cols[0] == "end":
         print("Reached the goal")
