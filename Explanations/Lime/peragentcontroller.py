@@ -146,6 +146,103 @@ class PerAgentController(AgentController):
 
     return result
 
+  @staticmethod
+  def _collision_category(cols: list[str]) -> int:
+    '''Map the first collision to an int representing
+       end, island, boundary, or time-out.'''
+    if not cols:
+      return 3  # time_out
+    if cols[0] == "end":
+      return 0
+    if cols[0].startswith("island_"):
+      return 1
+    if cols[0] == "boundary":
+      return 2
+    raise ValueError(f"Unknown collision type: {cols[0]}")
+
+  def _evaluate_run_perturbations(
+      self, pers: Iterable[Perturbation]
+  ) -> np.ndarray:
+    '''Return run metrics and a numeric collision category for each input.'''
+    pers = list(pers)
+    base_state = self.store_base_state()
+    result = np.empty((len(pers), 3), dtype=float)
+
+    try:
+      self.apply_perturbation(base_state)
+      base_reward, _, _ = self.finish_episode()
+      self.apply_perturbation(base_state)
+
+      for i, per in enumerate(pers):
+        self.apply_perturbation(per)
+        start_steps = self.sim_state.steps
+        reward, stepcount, cols = self.finish_episode()
+        result[i] = [
+          reward - base_reward,
+          stepcount - start_steps,
+          self._collision_category(cols),
+        ]
+        self.apply_perturbation(base_state)
+    finally:
+      self.apply_perturbation(base_state)
+
+    return result
+
+  def eval_run_perturbations(
+      self, pers: Iterable[Perturbation]
+  ) -> np.ndarray:
+    '''
+      Evaluate complete runs from the same base state.
+
+      Returns columns ``[reward_delta, stepcount, collision_category]``.
+      Collision categories are ``end=0``, ``island=1``, ``boundary=2``,
+      and ``time_out=3``.
+    '''
+    return self._evaluate_run_perturbations(pers)
+
+  def eval_run_collision_probabilities(
+      self, pers: Iterable[Perturbation]
+  ) -> np.ndarray:
+    '''
+      Evaluate runs and return one-hot collision probabilities.
+
+      Columns are ordered ``[end, island, boundary, time_out]``.
+    '''
+    categories = self._evaluate_run_perturbations(pers)[:, 2].astype(int)
+    probabilities = np.zeros((len(categories), 4), dtype=float)
+    probabilities[np.arange(len(categories)), categories] = 1.0
+    return probabilities
+
+  def eval_run_perturbation_array(
+      self, states: np.ndarray
+  ) -> np.ndarray:
+    '''Array adapter for ``eval_run_perturbations`` with shape ``(n, 8)``.'''
+    states = np.asarray(states)
+
+    if states.ndim != 2 or states.shape[1] != 8:
+      raise ValueError(
+        f"Expected states with shape (n, 8), got {states.shape}."
+      )
+
+    return self.eval_run_perturbations(
+      Perturbation(*state) for state in states
+    )
+
+  def eval_run_collision_probability_array(
+      self, states: np.ndarray
+  ) -> np.ndarray:
+    '''Array adapter for run collision probabilities with shape ``(n, 8)``.'''
+    states = np.asarray(states)
+
+    if states.ndim != 2 or states.shape[1] != 8:
+      raise ValueError(
+        f"Expected states with shape (n, 8), got {states.shape}."
+      )
+
+    return self.eval_run_collision_probabilities(
+      Perturbation(*state) for state in states
+    )
+
   def eval_step_perturbation_array(
       self, states: np.ndarray
   ) -> np.ndarray:

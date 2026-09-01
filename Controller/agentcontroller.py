@@ -36,7 +36,7 @@ class AgentController(BaseController):
     update_local_view(self.lview, self.sim_state.env, ship, 
                             self.config.lview_size, self.config.lview_res)
 
-  def finish_episode(self, ghost_finish = False) -> float:
+  def finish_episode(self, ghost_finish = False) -> tuple[float,int,list]:
     '''
       Finish the current episode and return the total reward.
     '''

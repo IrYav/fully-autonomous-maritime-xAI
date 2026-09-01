@@ -4,7 +4,9 @@ import numpy as np
 
 from Controller.agentcontroller import AgentController
 from Simulation.Environment.agent import Ship
-from Simulation.Visualization.RightHalf.ExplTab.lime_view_model import Source, StepValueClass
+from Explanations.Lime.lime_model import (
+  RunValueClass, Source, StepValueClass, ValueField,
+)
 from ThirdParty.lime.lime.lime_tabular import LimeTabularExplainer
 
 from Agent.Observation.observation import feature_names
@@ -18,13 +20,20 @@ class LimeExplainer():
 
   def __init__(self, ac: AgentController):
     self.ac = ac
-    #The explainer itself does not depend on the (future) instance.
-    self.explainer = self.calculate_explainer()
+    self._explainer_cache = {}
+    # Keep the default regression explainer available for compatibility.
+    self.explainer = self.get_explainer()
 
-  def calculate_explainer(self) -> LimeTabularExplainer:
+  def get_explainer(
+      self, mode: str = "regression", class_names: list[str] | None = None
+  ) -> LimeTabularExplainer:
     '''
-      Learns and returns a LIME explainer.
+      Return a cached LIME explainer, creating it on first request.
     '''
+    cache_key = (mode, tuple(class_names or ()))
+    if cache_key in self._explainer_cache:
+      return self._explainer_cache[cache_key]
+
     samples_path = Path("Explanations/Samples")
     steps = np.concatenate(
       [
@@ -33,15 +42,15 @@ class LimeExplainer():
       ],
       axis=0,
     )
-    print(steps.shape)
     train = np.stack(steps[:, 0])[:, [0, 1, 2, 3, 4, 5, 10, 11]]
-    print(train.shape)
 
     explainer = LimeTabularExplainer(
       train, 
       feature_names=feature_names(pretty=True, reduced=True),
-      mode="regression",
+      mode=mode,
+      class_names=class_names,
     )
+    self._explainer_cache[cache_key] = explainer
     return explainer
 
   def get_samples(self,
@@ -108,6 +117,138 @@ class LimeExplainer():
 
     return positions, theta_values
 
+  def get_sample_states(
+      self,
+      ship: Ship,
+      size_x: float, size_y: float,
+      num_x: int, num_y: int, num_thetas: int,
+  ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    '''Return the sample grid and its corresponding normalized states.'''
+    positions, theta_values = self.get_samples(
+      ship, size_x, size_y, num_x, num_y, num_thetas,
+    )
+    base_state = self.ac.store_base_state()
+    map_min = np.asarray(self.ac.config.boundary[0], dtype=float)
+    map_size = np.asarray(self.ac.config.boundary[1], dtype=float) - map_min
+
+    states = np.repeat(
+      np.asarray([
+        ((position - map_min) / map_size) * 2 - 1
+        for position in positions
+      ], dtype=float),
+      len(theta_values),
+      axis=0,
+    )
+    states = np.column_stack([
+      states,
+      np.tile(
+        np.array([
+          base_state.heading_cos,
+          base_state.heading_sin,
+          base_state.velocity,
+          base_state.time_elapsed,
+          base_state.end_x,
+          base_state.end_y,
+        ], dtype=float),
+        (len(positions) * len(theta_values), 1),
+      ),
+    ])
+    states[:, 2] = np.cos(np.tile(theta_values, len(positions)))
+    states[:, 3] = np.sin(np.tile(theta_values, len(positions)))
+    return positions, theta_values, states.reshape(
+      len(positions), len(theta_values), 8,
+    )
+
+  def evaluate_grid(
+      self,
+      explanation,
+      target: StepValueClass | RunValueClass,
+      ship: Ship,
+      size_x: float, size_y: float,
+      num_x: int, num_y: int, num_thetas: int,
+      label: int | None = None,
+  ) -> ValueField:
+    '''Evaluate truth, surrogate, and signed error over a sample grid.'''
+    positions, theta_values, states = self.get_sample_states(
+      ship, size_x, size_y, num_x, num_y, num_thetas,
+    )
+    flat_states = states.reshape(-1, 8)
+
+    if isinstance(target, StepValueClass):
+      column = {
+        StepValueClass.HEADING: 0,
+        StepValueClass.THROTTLE: 1,
+        StepValueClass.LREWARD: 2,
+      }[target]
+      truth = self.ac.eval_step_perturbation_array(flat_states)[:, column]
+      surrogate = self.evaluate_surrogate(explanation, flat_states)
+      value_enum = StepValueClass
+    elif isinstance(target, RunValueClass):
+      value_enum = RunValueClass
+      if target is RunValueClass.COLLISIONS:
+        if label is None:
+          labels = explanation.available_labels()
+          if not labels:
+            raise ValueError("The classification explanation has no labels.")
+          label = labels[0]
+        truth = self.ac.eval_run_collision_probability_array(flat_states)[:, label]
+        surrogate = self.evaluate_surrogate(explanation, flat_states, label)
+      else:
+        column = {
+          RunValueClass.REWARD_DELTA: 0,
+          RunValueClass.STEPCOUNT: 1,
+        }[target]
+        truth = self.ac.eval_run_perturbation_array(flat_states)[:, column]
+        surrogate = self.evaluate_surrogate(explanation, flat_states)
+    else:
+      raise TypeError(f"Unsupported target type: {type(target).__name__}")
+
+    shape = (len(positions), len(theta_values))
+    truth = truth.reshape(shape)
+    surrogate = surrogate.reshape(shape)
+    values = np.full((
+      *shape, len(Source), len(value_enum),
+    ), np.nan, dtype=np.float32)
+    source_index = {source: i for i, source in enumerate(Source)}
+    target_index = list(value_enum).index(target)
+    values[:, :, source_index[Source.GROUND_TRUTH], target_index] = truth
+    values[:, :, source_index[Source.LIME], target_index] = surrogate
+    values[:, :, source_index[Source.ERROR], target_index] = truth - surrogate
+    return ValueField(positions, theta_values, values)
+
+  def plot_grid(
+      self,
+      field: ValueField,
+      target: StepValueClass | RunValueClass,
+      source: Source = Source.LIME,
+      theta_index: int = 0,
+      ax=None,
+  ):
+    '''Draw one source/target slice of a grid as a heatmap.'''
+    import matplotlib.pyplot as plt
+
+    if theta_index < 0 or theta_index >= len(field.theta_values):
+      raise IndexError(f"Theta index out of range: {theta_index}")
+
+    value_enum = StepValueClass if isinstance(target, StepValueClass) else RunValueClass
+    target_index = list(value_enum).index(target)
+    source_index = list(Source).index(source)
+    x_values = np.unique(field.positions[:, 0])
+    y_values = np.unique(field.positions[:, 1])
+    if len(x_values) * len(y_values) != len(field.positions):
+      raise ValueError("Grid positions do not form a rectangular grid.")
+
+    heatmap = field.values[:, :, source_index, target_index]
+    heatmap = heatmap[:, theta_index].reshape(len(y_values), len(x_values))
+    if ax is None:
+      _, ax = plt.subplots()
+    image = ax.pcolormesh(x_values, y_values, heatmap, shading="auto")
+    ax.set_xlabel("ship x")
+    ax.set_ylabel("ship y")
+    ax.set_title(f"{source.name}: {target.name}, theta={field.theta_values[theta_index]:.3f}")
+    ax.figure.colorbar(image, ax=ax)
+    return ax
+
   def evaluate_step_samples(self, 
     positions: np.ndarray, #(N, 2)
     thetas: np.ndarray, #(N,)
@@ -146,44 +287,93 @@ class LimeExplainer():
       get_lime_step_fns(self)[2](state) = reward
     '''
 
-  def set_manipulated_obs():
+  def get_explainer_instance(
+        self,
+        base_state: np.ndarray, #(8,) 
+        target: StepValueClass | RunValueClass, 
+        num_samples = 500
+      ):
     '''
-      Soll den 12d vektor korrekt aus 3d ableiten.
-      Konsistenzchecks sind importante, e.g. pos -> rel pos
+      Get an explainer for the selected `target`, given the
+      `base_state`
     '''
+    if isinstance(target, StepValueClass):
+      predict_column = {
+        StepValueClass.HEADING: 0,
+        StepValueClass.THROTTLE: 1,
+        StepValueClass.LREWARD: 2,
+      }[target]
+      predict_fn = lambda X: self.ac.eval_step_perturbation_array(X)[:, predict_column]
+      explainer = self.get_explainer()
+    elif isinstance(target, RunValueClass):
+      if target is RunValueClass.REWARD_DELTA:
+        predict_fn = lambda X: self.ac.eval_run_perturbation_array(X)[:, 0]
+        explainer = self.get_explainer()
+      elif target is RunValueClass.STEPCOUNT:
+        predict_fn = lambda X: self.ac.eval_run_perturbation_array(X)[:, 1]
+        explainer = self.get_explainer()
+      elif target is RunValueClass.COLLISIONS:
+        predict_fn = self.ac.eval_run_collision_probability_array
+        explainer = self.get_explainer(
+          mode="classification",
+          class_names=["end", "island", "boundary", "time_out"],
+        )
+      else:
+        raise ValueError(f"Unsupported run target: {target}")
+    else:
+      raise TypeError(f"Unsupported target type: {type(target).__name__}")
 
-  def get_all_explainers(self, state):
-    '''
-    get_all_explainers
-    Ideally returns 3 funcs 12d -> 1d
-
-    Probably needs some way to access surrogate 
-    or at least its 13 weights (flat bias + 12 linear weights)
-
-    Instanz erhalten, braucht vektor eval. 
-    Predict easy, aber wie reward?
-    Reward vermutlich stumpf über ghost steps.
-    '''
-    NUM_FEATURES = 5
-    NUM_SAMPLES = 5000
-    exp_rudder = self.explainer.explain_instance(
-      state,
-      predict_fn=lambda X: self.ac.states_predict(X)[:, 0],
-      num_features=NUM_FEATURES, num_samples=NUM_SAMPLES,
+    return explainer.explain_instance(
+      np.asarray(base_state, dtype=float),
+      predict_fn=predict_fn,
+      num_features=8,
+      num_samples=num_samples, sampling_method="lhs"
     )
 
-    exp_throttle = self.explainer.explain_instance(
-      state,
-      predict_fn=lambda X: self.ac.states_predict(X)[:, 1],
-      num_features=NUM_FEATURES, num_samples=NUM_SAMPLES,
-    )
+  def evaluate_surrogate(
+      self, explanation, data: np.ndarray, label: int | None = None
+  ) -> np.ndarray:
+    '''Evaluate a calculated LIME surrogate on one or more states.
 
-    exp_lreward = self.explainer.explain_instance(
-      state,
-      predict_fn=lambda X: self.ac.states_predict(X)[:, 1],
-      num_features=NUM_FEATURES, num_samples=NUM_SAMPLES,
-    )
+    LIME fits its linear model on standardized feature values. This method
+    applies the matching cached explainer scaler before evaluating
+    ``intercept + sum(weight * feature)``.
+    '''
+    data = np.asarray(data, dtype=float)
+    if data.ndim == 1:
+      data = data.reshape(1, -1)
+    if data.ndim != 2 or data.shape[1] != 8:
+      raise ValueError(f"Expected data with shape (n, 8), got {data.shape}.")
 
+    if explanation.mode == "regression":
+      lime_explainer = self.get_explainer()
+      label = 1 if label is None else label
+    elif explanation.mode == "classification":
+      lime_explainer = self.get_explainer(
+        mode="classification",
+        class_names=["end", "island", "boundary", "time_out"],
+      )
+      if label is None:
+        labels = explanation.available_labels()
+        if not labels:
+          raise ValueError("The classification explanation has no labels.")
+        label = labels[0]
+    else:
+      raise ValueError(f"Unsupported explanation mode: {explanation.mode}")
+
+    if label not in explanation.local_exp:
+      raise ValueError(f"The explanation has no surrogate for label {label}.")
+
+    scaled_data = (
+      data - lime_explainer.scaler.mean_
+    ) / lime_explainer.scaler.scale_
+    prediction = np.full(
+      len(data), float(explanation.intercept[label]), dtype=float
+    )
+    for feature, weight in explanation.local_exp[label]:
+      prediction += float(weight) * scaled_data[:, feature]
+    return prediction
+  
   def ghost_steps(self, obs):
     '''
       Maps a (n, ) 12D observations (c.f.  build_observation), using the self.ac image
@@ -192,19 +382,3 @@ class LimeExplainer():
     for ob in obs:
       self.ac.model_step(True)
 
-  def setup_ground_truth():
-    
-    #Probably vectors (x,y,[step res], [run res])
-
-    #Sample around the ship (some kind of vicinity)
-
-    #Directly collect all relevant sizes.
-      #local reward <- ac.model_step(True)["reward"]
-      #rudder <- ac.model_step(True)["action"][0]
-      #velocity <- ac.model_step(True)["action"][1]
-      #Reward Delta <- Small auxilary, ac.finish_episode(True)[0] - base_reward
-      #Step Count to goal <- ac.finish_episode(True)[1]
-      #Collisions (Categorical) <- ac.finish_episode(True)[2] but modified, 
-        # Four! categories. normal 3, plus time-out ()
-
-    return
