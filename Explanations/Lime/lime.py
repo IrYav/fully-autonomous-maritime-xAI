@@ -25,12 +25,15 @@ class LimeExplainer():
     self.explainer = self.get_explainer()
 
   def get_explainer(
-      self, mode: str = "regression", class_names: list[str] | None = None
+      self, mode: str = "regression", class_names: list[str] | None = None,
+      discretize_continuous: bool = True,
   ) -> LimeTabularExplainer:
     '''
       Return a cached LIME explainer, creating it on first request.
     '''
-    cache_key = (mode, tuple(class_names or ()))
+    cache_key = (
+      mode, tuple(class_names or ()), bool(discretize_continuous),
+    )
     if cache_key in self._explainer_cache:
       return self._explainer_cache[cache_key]
 
@@ -49,6 +52,7 @@ class LimeExplainer():
       feature_names=feature_names(pretty=True, reduced=True),
       mode=mode,
       class_names=class_names,
+      discretize_continuous=discretize_continuous,
     )
     self._explainer_cache[cache_key] = explainer
     return explainer
@@ -167,6 +171,7 @@ class LimeExplainer():
       size_x: float, size_y: float,
       num_x: int, num_y: int, num_thetas: int,
       label: int | None = None,
+      discretize_continuous: bool | None = None,
   ) -> ValueField:
     '''Evaluate truth, surrogate, and signed error over a sample grid.'''
     positions, theta_values, states = self.get_sample_states(
@@ -181,7 +186,9 @@ class LimeExplainer():
         StepValueClass.LREWARD: 2,
       }[target]
       truth = self.ac.eval_step_perturbation_array(flat_states)[:, column]
-      surrogate = self.evaluate_surrogate(explanation, flat_states)
+      surrogate = self.evaluate_surrogate(
+        explanation, flat_states, discretize_continuous=discretize_continuous,
+      )
       value_enum = StepValueClass
     elif isinstance(target, RunValueClass):
       value_enum = RunValueClass
@@ -192,14 +199,19 @@ class LimeExplainer():
             raise ValueError("The classification explanation has no labels.")
           label = labels[0]
         truth = self.ac.eval_run_collision_probability_array(flat_states)[:, label]
-        surrogate = self.evaluate_surrogate(explanation, flat_states, label)
+        surrogate = self.evaluate_surrogate(
+          explanation, flat_states, label,
+          discretize_continuous=discretize_continuous,
+        )
       else:
         column = {
           RunValueClass.REWARD_DELTA: 0,
           RunValueClass.STEPCOUNT: 1,
         }[target]
         truth = self.ac.eval_run_perturbation_array(flat_states)[:, column]
-        surrogate = self.evaluate_surrogate(explanation, flat_states)
+        surrogate = self.evaluate_surrogate(
+          explanation, flat_states, discretize_continuous=discretize_continuous,
+        )
     else:
       raise TypeError(f"Unsupported target type: {type(target).__name__}")
 
@@ -291,7 +303,8 @@ class LimeExplainer():
         self,
         base_state: np.ndarray, #(8,) 
         target: StepValueClass | RunValueClass, 
-        num_samples = 500
+        num_samples = 500,
+        discretize_continuous: bool = True,
       ):
     '''
       Get an explainer for the selected `target`, given the
@@ -304,34 +317,47 @@ class LimeExplainer():
         StepValueClass.LREWARD: 2,
       }[target]
       predict_fn = lambda X: self.ac.eval_step_perturbation_array(X)[:, predict_column]
-      explainer = self.get_explainer()
+      explainer = self.get_explainer(
+        discretize_continuous=discretize_continuous,
+      )
     elif isinstance(target, RunValueClass):
       if target is RunValueClass.REWARD_DELTA:
         predict_fn = lambda X: self.ac.eval_run_perturbation_array(X)[:, 0]
-        explainer = self.get_explainer()
+        explainer = self.get_explainer(
+          discretize_continuous=discretize_continuous,
+        )
       elif target is RunValueClass.STEPCOUNT:
         predict_fn = lambda X: self.ac.eval_run_perturbation_array(X)[:, 1]
-        explainer = self.get_explainer()
+        explainer = self.get_explainer(
+          discretize_continuous=discretize_continuous,
+        )
       elif target is RunValueClass.COLLISIONS:
         predict_fn = self.ac.eval_run_collision_probability_array
         explainer = self.get_explainer(
           mode="classification",
           class_names=["end", "island", "boundary", "time_out"],
+          discretize_continuous=discretize_continuous,
         )
       else:
         raise ValueError(f"Unsupported run target: {target}")
     else:
       raise TypeError(f"Unsupported target type: {type(target).__name__}")
 
-    return explainer.explain_instance(
+    explanation = explainer.explain_instance(
       np.asarray(base_state, dtype=float),
       predict_fn=predict_fn,
       num_features=8,
       num_samples=num_samples, sampling_method="lhs"
     )
+    # Explanation does not retain a reference to its LimeTabularExplainer.
+    # Keep the setting here so downstream grid evaluation can use the exact
+    # feature representation used by this explanation.
+    explanation._discretize_continuous = discretize_continuous
+    return explanation
 
   def evaluate_surrogate(
-      self, explanation, data: np.ndarray, label: int | None = None
+      self, explanation, data: np.ndarray, label: int | None = None,
+      discretize_continuous: bool | None = None,
   ) -> np.ndarray:
     '''Evaluate a calculated LIME surrogate on one or more states.
 
@@ -345,13 +371,22 @@ class LimeExplainer():
     if data.ndim != 2 or data.shape[1] != 8:
       raise ValueError(f"Expected data with shape (n, 8), got {data.shape}.")
 
+    if discretize_continuous is None:
+      discretize_continuous = getattr(
+        explanation, "_discretize_continuous",
+        explanation.domain_mapper.discretized_feature_names is not None,
+      )
+
     if explanation.mode == "regression":
-      lime_explainer = self.get_explainer()
+      lime_explainer = self.get_explainer(
+        discretize_continuous=discretize_continuous,
+      )
       label = 1 if label is None else label
     elif explanation.mode == "classification":
       lime_explainer = self.get_explainer(
         mode="classification",
         class_names=["end", "island", "boundary", "time_out"],
+        discretize_continuous=discretize_continuous,
       )
       if label is None:
         labels = explanation.available_labels()
@@ -364,9 +399,40 @@ class LimeExplainer():
     if label not in explanation.local_exp:
       raise ValueError(f"The explanation has no surrogate for label {label}.")
 
-    scaled_data = (
-      data - lime_explainer.scaler.mean_
-    ) / lime_explainer.scaler.scale_
+    if discretize_continuous:
+      if lime_explainer.discretizer is None:
+        raise ValueError(
+          "The explanation is marked as discretized, but its explainer "
+          "has no discretizer."
+        )
+
+      # LIME changes every continuous feature into a categorical feature
+      # after binning. Its local data is therefore 1 iff the value belongs to
+      # the same bin as the explained instance, rather than the bin number or
+      # a standardized raw value.
+      discretized_data = lime_explainer.discretizer.discretize(data)
+      names = explanation.domain_mapper.discretized_feature_names
+      if names is None:
+        raise ValueError(
+          "Cannot recover the reference bins from the explanation."
+        )
+      base_bins = np.empty(data.shape[1], dtype=int)
+      for feature in range(data.shape[1]):
+        bin_names = lime_explainer.discretizer.names.get(feature)
+        if bin_names is None:
+          base_bins[feature] = data[0, feature]
+          continue
+        try:
+          base_bins[feature] = bin_names.index(names[feature])
+        except (KeyError, ValueError) as error:
+          raise ValueError(
+            f"Could not recover the reference bin for feature {feature}."
+          ) from error
+      scaled_data = (discretized_data == base_bins).astype(float)
+    else:
+      scaled_data = (
+        data - lime_explainer.scaler.mean_
+      ) / lime_explainer.scaler.scale_
     prediction = np.full(
       len(data), float(explanation.intercept[label]), dtype=float
     )
@@ -381,4 +447,3 @@ class LimeExplainer():
     '''
     for ob in obs:
       self.ac.model_step(True)
-
