@@ -160,6 +160,22 @@ class AgentController(BaseController):
       log_result(cur_path / "result.npz", total_reward, self.sim_state.steps, cols)
       run += 1
 
+  def generate_start_samples(self, path, num_samples: int, reduced = False) -> None:
+    '''
+      Generates `num_samples` many environments and extracts the start state.
+
+      `reduced` is passed to the `build_observation`
+
+      Stores the numpy under `Path(path) / f"start_samples_{num_samples}"`
+    '''
+    target_path = Path(path) / f"start_samples_{num_samples}"
+    results = []
+    for _ in range(num_samples):
+      self.new_training_instance()
+      results.append(build_observation(self, reduced)["state"])
+    results = np.array(results, dtype=np.float32)
+    np.save(target_path, results)
+
   def _get_state_dict(self):
     obs = build_observation(self, True)
     return obs["state"]
