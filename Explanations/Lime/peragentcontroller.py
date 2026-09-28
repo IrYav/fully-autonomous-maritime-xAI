@@ -36,7 +36,7 @@ class Perturbation:
   end_y: float
 
   def __post_init__(self):
-    # Auf gültigen Heading projizieren
+    # Project to valid heading
     theta = math.atan2(self.heading_sin, self.heading_cos)
     self.heading_cos = math.cos(theta)
     self.heading_sin = math.sin(theta)

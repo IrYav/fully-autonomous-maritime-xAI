@@ -63,8 +63,7 @@ class AgentController(BaseController):
       Does a model step on the current environment.
       Requires a valid episode.
 
-      Iff `ghost_step`, the action will be executed, 
-      otherwise it will only 
+      Iff `ghost_step`, the ship movement will be undone again before return.
     '''
     obs = build_observation(self) # Normal obs
 
