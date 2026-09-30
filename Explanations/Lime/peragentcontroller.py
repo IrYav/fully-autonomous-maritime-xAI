@@ -9,6 +9,7 @@ from collections.abc import Iterable
 import numpy as np
 import math
 from shapely.affinity import translate
+from shapely.geometry import MultiPolygon
 
 from Simulation.Environment.environment import Environment
 
@@ -42,6 +43,13 @@ class Perturbation:
     self.heading_sin = math.sin(theta)
 
 
+@dataclass(frozen=True)
+class IslandPerturbation:
+  '''Physical translation of one selected island.'''
+  dx: float
+  dy: float
+
+
 class PerAgentController(AgentController):
   '''
     Controller for running a trained agent in an environment, as well as
@@ -51,6 +59,64 @@ class PerAgentController(AgentController):
                model: PPO | SAC ):
     super().__init__(config, model)
     self.base_perturbation : Perturbation = None
+
+  def get_island(self, island_id: int):
+    '''Return an island from the current environment by stable list index.'''
+    islands = self.sim_state.env.island_list
+    if not isinstance(island_id, (int, np.integer)):
+      raise TypeError(f"island_id must be an integer, got {type(island_id).__name__}")
+    if not 0 <= island_id < len(islands):
+      raise IndexError(
+        f"island_id {island_id} out of range for {len(islands)} islands."
+      )
+    return islands[int(island_id)]
+
+  def get_island_centroid(self, island_id: int) -> np.ndarray:
+    '''Return the current island centroid as a physical ``(x, y)`` point.'''
+    return np.asarray(self.get_island(island_id).centroid.coords[0], dtype=float)
+
+  def _apply_island_perturbation_from(
+      self,
+      perturbation: IslandPerturbation,
+      island_id: int,
+      base_env: Environment,
+      base_ship,
+      base_steps: int,
+  ) -> None:
+    islands = list(base_env.island_list)
+    if island_id < 0 or island_id >= len(islands):
+      raise IndexError(
+        f"island_id {island_id} out of range for {len(islands)} islands."
+      )
+
+    islands[island_id] = translate(
+      islands[island_id],
+      xoff=float(perturbation.dx),
+      yoff=float(perturbation.dy),
+    )
+    new_env = Environment(
+      MultiPolygon(islands),
+      base_env.corridor,
+      base_env.start,
+      base_env.end_poly,
+      base_env.boundary,
+    )
+    self.new_training_instance(
+      pre_made_env=new_env,
+      pre_made_ship=base_ship,
+    )
+    self.sim_state.steps = base_steps
+
+  def apply_island_perturbation(
+      self, perturbation: IslandPerturbation, island_id: int
+  ) -> None:
+    '''Apply an island translation while preserving the current ship state.'''
+    base_env = self.sim_state.env
+    base_ship = self.sim_state.ship.copy()
+    base_steps = self.sim_state.steps
+    self._apply_island_perturbation_from(
+      perturbation, island_id, base_env, base_ship, base_steps,
+    )
 
   def store_base_state(self) -> Perturbation:
     '''Store and return the current simulation state in 8D form.'''
@@ -146,6 +212,33 @@ class PerAgentController(AgentController):
 
     return result
 
+  def eval_step_island_perturbations(
+      self, pers: Iterable[IslandPerturbation], island_id: int
+  ) -> np.ndarray:
+    '''Evaluate one model step for island translations from one base state.'''
+    pers = list(pers)
+    base_state = self.store_base_state()
+    base_env = self.sim_state.env
+    base_ship = self.sim_state.ship.copy()
+    base_steps = self.sim_state.steps
+    result = np.empty((len(pers), 3), dtype=float)
+
+    try:
+      for i, per in enumerate(pers):
+        self._apply_island_perturbation_from(
+          per, island_id, base_env, base_ship, base_steps,
+        )
+        step = self.model_step()
+        action = np.asarray(step["action"], dtype=float).reshape(-1)
+        result[i] = [action[0], action[1], step["reward"]]
+    finally:
+      self._apply_island_perturbation_from(
+        IslandPerturbation(0.0, 0.0), island_id,
+        base_env, base_ship, base_steps,
+      )
+
+    return result
+
   @staticmethod
   def _collision_category(cols: list[str]) -> int:
     '''Map the first collision to an int representing
@@ -187,6 +280,60 @@ class PerAgentController(AgentController):
       self.apply_perturbation(base_state)
 
     return result
+
+  def _evaluate_run_island_perturbations(
+      self, pers: Iterable[IslandPerturbation], island_id: int
+  ) -> np.ndarray:
+    '''Evaluate complete runs for island translations from one base state.'''
+    pers = list(pers)
+    self.store_base_state()
+    base_env = self.sim_state.env
+    base_ship = self.sim_state.ship.copy()
+    base_steps = self.sim_state.steps
+    result = np.empty((len(pers), 3), dtype=float)
+
+    try:
+      self._apply_island_perturbation_from(
+        IslandPerturbation(0.0, 0.0), island_id,
+        base_env, base_ship, base_steps,
+      )
+      base_reward, _, _ = self.finish_episode()
+
+      for i, per in enumerate(pers):
+        self._apply_island_perturbation_from(
+          per, island_id, base_env, base_ship, base_steps,
+        )
+        start_steps = self.sim_state.steps
+        reward, stepcount, cols = self.finish_episode()
+        result[i] = [
+          reward - base_reward,
+          stepcount - start_steps,
+          self._collision_category(cols),
+        ]
+    finally:
+      self._apply_island_perturbation_from(
+        IslandPerturbation(0.0, 0.0), island_id,
+        base_env, base_ship, base_steps,
+      )
+
+    return result
+
+  def eval_run_island_perturbations(
+      self, pers: Iterable[IslandPerturbation], island_id: int
+  ) -> np.ndarray:
+    '''Evaluate complete runs for island translations.'''
+    return self._evaluate_run_island_perturbations(pers, island_id)
+
+  def eval_run_island_collision_probabilities(
+      self, pers: Iterable[IslandPerturbation], island_id: int
+  ) -> np.ndarray:
+    '''Return one-hot collision probabilities for island translations.'''
+    categories = self._evaluate_run_island_perturbations(
+      pers, island_id,
+    )[:, 2].astype(int)
+    probabilities = np.zeros((len(categories), 4), dtype=float)
+    probabilities[np.arange(len(categories)), categories] = 1.0
+    return probabilities
 
   def eval_run_perturbations(
       self, pers: Iterable[Perturbation]
@@ -241,6 +388,44 @@ class PerAgentController(AgentController):
 
     return self.eval_run_collision_probabilities(
       Perturbation(*state) for state in states
+    )
+
+  def _island_position_perturbations(
+      self, positions: np.ndarray, island_id: int
+  ) -> list[IslandPerturbation]:
+    positions = np.asarray(positions, dtype=float)
+    if positions.ndim != 2 or positions.shape[1] != 2:
+      raise ValueError(
+        f"Expected island positions with shape (n, 2), got {positions.shape}."
+      )
+    map_min = np.asarray(self.config.boundary[0], dtype=float)
+    map_size = np.asarray(self.config.boundary[1], dtype=float) - map_min
+    candidate_positions = (positions + 1) * map_size / 2 + map_min
+    base_centroid = self.get_island_centroid(island_id)
+    return [
+      IslandPerturbation(*(candidate - base_centroid))
+      for candidate in candidate_positions
+    ]
+
+  def eval_step_island_position_array(
+      self, positions: np.ndarray, island_id: int
+  ) -> np.ndarray:
+    return self.eval_step_island_perturbations(
+      self._island_position_perturbations(positions, island_id), island_id,
+    )
+
+  def eval_run_island_position_array(
+      self, positions: np.ndarray, island_id: int
+  ) -> np.ndarray:
+    return self.eval_run_island_perturbations(
+      self._island_position_perturbations(positions, island_id), island_id,
+    )
+
+  def eval_run_island_collision_probability_array(
+      self, positions: np.ndarray, island_id: int
+  ) -> np.ndarray:
+    return self.eval_run_island_collision_probabilities(
+      self._island_position_perturbations(positions, island_id), island_id,
     )
 
   def eval_step_perturbation_array(

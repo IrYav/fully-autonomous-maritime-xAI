@@ -2,7 +2,6 @@ from enum import Enum
 from pathlib import Path
 import numpy as np
 
-from Controller.agentcontroller import AgentController
 from Simulation.Environment.agent import Ship
 from Explanations.Lime.lime_model import (
   RunValueClass, Source, StepValueClass, ValueField,
@@ -12,47 +11,69 @@ from ThirdParty.lime.lime.lime_tabular import LimeTabularExplainer
 from Agent.Observation.observation import feature_names
 from Simulation.Auxilaries.io import load_runs
 from Simulation.Auxilaries.sim_config import sim_config
+from Explanations.Lime.peragentcontroller import PerAgentController
 
 
 class LimeExplainer():
-  ac : AgentController
+  pac : PerAgentController
   explainer : LimeTabularExplainer
 
-  def __init__(self, ac: AgentController):
-    self.ac = ac
+  def __init__(self, pac: PerAgentController):
+    self.pac = pac
     self._explainer_cache = {}
     # Keep the default regression explainer available for compatibility.
     self.explainer = self.get_explainer()
 
   def get_explainer(
       self, mode: str = "regression", class_names: list[str] | None = None,
-      discretize_continuous: bool = True,
+      discretize_continuous: bool | None = None,
+      island_mode: bool = False,
+      sample_around_instance: bool | None = None,
   ) -> LimeTabularExplainer:
     '''
       Return a cached LIME explainer, creating it on first request.
     '''
+    if sample_around_instance is None:
+      sample_around_instance = island_mode
+    if discretize_continuous is None:
+      discretize_continuous = not island_mode
     cache_key = (
       mode, tuple(class_names or ()), bool(discretize_continuous),
+      bool(island_mode), bool(sample_around_instance),
     )
     if cache_key in self._explainer_cache:
       return self._explainer_cache[cache_key]
 
     samples_path = Path("Explanations/Samples")
-    steps = np.concatenate(
-      [
-        np.asarray(run.steps, dtype=object)
-        for run in load_runs(samples_path, sim_config)
-      ],
-      axis=0,
-    )
-    train = np.stack(steps[:, 0])[:, [0, 1, 2, 3, 4, 5, 10, 11]]
+    if island_mode:
+      runs = list(load_runs(samples_path, sim_config))
+      map_min = np.asarray(sim_config.boundary[0], dtype=float)
+      map_size = np.asarray(sim_config.boundary[1], dtype=float) - map_min
+      train = np.asarray([
+        ((np.asarray(island.centroid.coords[0], dtype=float) - map_min) /
+         map_size) * 2 - 1
+        for run in runs
+        for island in run.scenario[0].island_list
+      ], dtype=float)
+      names = ["island_x_norm", "island_y_norm"]
+    else:
+      steps = np.concatenate(
+        [
+          np.asarray(run.steps, dtype=object)
+          for run in load_runs(samples_path, sim_config)
+        ],
+        axis=0,
+      )
+      train = np.stack(steps[:, 0])[:, [0, 1, 2, 3, 4, 5, 10, 11]]
+      names = feature_names(pretty=True, reduced=True)
 
     explainer = LimeTabularExplainer(
       train, 
-      feature_names=feature_names(pretty=True, reduced=True),
+      feature_names=names,
       mode=mode,
       class_names=class_names,
       discretize_continuous=discretize_continuous,
+      sample_around_instance=sample_around_instance,
     )
     self._explainer_cache[cache_key] = explainer
     return explainer
@@ -131,9 +152,9 @@ class LimeExplainer():
     positions, theta_values = self.get_samples(
       ship, size_x, size_y, num_x, num_y, num_thetas,
     )
-    base_state = self.ac.store_base_state()
-    map_min = np.asarray(self.ac.config.boundary[0], dtype=float)
-    map_size = np.asarray(self.ac.config.boundary[1], dtype=float) - map_min
+    base_state = self.pac.store_base_state()
+    map_min = np.asarray(self.pac.config.boundary[0], dtype=float)
+    map_size = np.asarray(self.pac.config.boundary[1], dtype=float) - map_min
 
     states = np.repeat(
       np.asarray([
@@ -185,7 +206,7 @@ class LimeExplainer():
         StepValueClass.THROTTLE: 1,
         StepValueClass.LREWARD: 2,
       }[target]
-      truth = self.ac.eval_step_perturbation_array(flat_states)[:, column]
+      truth = self.pac.eval_step_perturbation_array(flat_states)[:, column]
       surrogate = self.evaluate_surrogate(
         explanation, flat_states, discretize_continuous=discretize_continuous,
       )
@@ -198,7 +219,7 @@ class LimeExplainer():
           if not labels:
             raise ValueError("The classification explanation has no labels.")
           label = labels[0]
-        truth = self.ac.eval_run_collision_probability_array(flat_states)[:, label]
+        truth = self.pac.eval_run_collision_probability_array(flat_states)[:, label]
         surrogate = self.evaluate_surrogate(
           explanation, flat_states, label,
           discretize_continuous=discretize_continuous,
@@ -208,7 +229,7 @@ class LimeExplainer():
           RunValueClass.REWARD_DELTA: 0,
           RunValueClass.STEPCOUNT: 1,
         }[target]
-        truth = self.ac.eval_run_perturbation_array(flat_states)[:, column]
+        truth = self.pac.eval_run_perturbation_array(flat_states)[:, column]
         surrogate = self.evaluate_surrogate(
           explanation, flat_states, discretize_continuous=discretize_continuous,
         )
@@ -261,78 +282,174 @@ class LimeExplainer():
     ax.figure.colorbar(image, ax=ax)
     return ax
 
-  def evaluate_step_samples(self, 
-    positions: np.ndarray, #(N, 2)
-    thetas: np.ndarray, #(N,)
+  def get_island_sample_states(
+      self,
+      island_id: int,
+      size_x: float, size_y: float,
+      num_x: int, num_y: int,
+  ) -> tuple[np.ndarray, np.ndarray]:
+    '''Return physical and normalized centroid grids for one island.'''
+    if num_x < 3 or num_y < 3:
+      raise ValueError("num_x and num_y must be at least 3")
 
-  ):
-    return
+    centroid = self.pac.get_island_centroid(island_id)
+    x_values = np.linspace(centroid[0] - size_x, centroid[0] + size_x, num_x)
+    y_values = np.linspace(centroid[1] - size_y, centroid[1] + size_y, num_y)
+    x_grid, y_grid = np.meshgrid(x_values, y_values, indexing="xy")
+    positions = np.column_stack((x_grid.ravel(), y_grid.ravel()))
 
-  def n_ghost_steps(self, 
-    positions: np.ndarray, #(N, 2)
-    thetas: np.ndarray, #(N,)
-  ):
-    N = len(positions)
-    T = len(thetas)
-    S = len(Source)
-    C = len(StepValueClass)
+    map_min = np.asarray(self.pac.config.boundary[0], dtype=float)
+    map_size = np.asarray(self.pac.config.boundary[1], dtype=float) - map_min
+    normalized = ((positions - map_min) / map_size) * 2 - 1
+    return positions, normalized
 
-    if N != T:
-      raise ValueError(
-        "Positions, and theta need the same length: "
-        f"{N} != {T}")
-    
-    values = np.empty((N, T, S, C), dtype=np.float32)
+  def evaluate_island_grid(
+      self,
+      explanation,
+      target: StepValueClass | RunValueClass,
+      island_id: int,
+      size_x: float, size_y: float,
+      num_x: int, num_y: int,
+      label: int | None = None,
+      discretize_continuous: bool | None = None,
+  ) -> ValueField:
+    '''Evaluate truth, surrogate, and signed error over an island grid.'''
+    positions, normalized = self.get_island_sample_states(
+      island_id, size_x, size_y, num_x, num_y,
+    )
 
-    for pos, theta in zip(positions,thetas):
-      #values[pos,theta,source,value_enum] = v
-      break
-    return
+    if isinstance(target, StepValueClass):
+      column = {
+        StepValueClass.HEADING: 0,
+        StepValueClass.THROTTLE: 1,
+        StepValueClass.LREWARD: 2,
+      }[target]
+      truth = self.pac.eval_step_island_position_array(
+        normalized, island_id,
+      )[:, column]
+      value_enum = StepValueClass
+    elif isinstance(target, RunValueClass):
+      value_enum = RunValueClass
+      if target is RunValueClass.COLLISIONS:
+        if label is None:
+          labels = explanation.available_labels()
+          if not labels:
+            raise ValueError("The classification explanation has no labels.")
+          label = labels[0]
+        truth = self.pac.eval_run_island_collision_probability_array(
+          normalized, island_id,
+        )[:, label]
+      else:
+        column = {
+          RunValueClass.REWARD_DELTA: 0,
+          RunValueClass.STEPCOUNT: 1,
+        }[target]
+        truth = self.pac.eval_run_island_position_array(
+          normalized, island_id,
+        )[:, column]
+    else:
+      raise TypeError(f"Unsupported target type: {type(target).__name__}")
 
-  def get_lime_step_fns(self):
-    '''
-      Returns the three predict_fns that map a 12d state 
-      (plus the `self.ac` image vectory) to the three instances
-      of `StepValueClass`. Or in otherwords:
-      get_lime_step_fns(self)[0](state) = heading
-      get_lime_step_fns(self)[1](state) = throttle
-      get_lime_step_fns(self)[2](state) = reward
-    '''
+    surrogate = self.evaluate_surrogate(
+      explanation, normalized, label,
+      discretize_continuous=discretize_continuous,
+      island_mode=True,
+    )
+    shape = (num_y, num_x)
+    truth = truth.reshape(shape)
+    surrogate = surrogate.reshape(shape)
+    values = np.full((
+      num_x * num_y, 1, len(Source), len(value_enum),
+    ), np.nan, dtype=np.float32)
+    source_index = {source: i for i, source in enumerate(Source)}
+    target_index = list(value_enum).index(target)
+    values[:, 0, source_index[Source.GROUND_TRUTH], target_index] = truth.ravel()
+    values[:, 0, source_index[Source.LIME], target_index] = surrogate.ravel()
+    values[:, 0, source_index[Source.ERROR], target_index] = (
+      truth - surrogate
+    ).ravel()
+    return ValueField(positions, np.asarray([0.0]), values)
 
   def get_explainer_instance(
         self,
         base_state: np.ndarray, #(8,) 
         target: StepValueClass | RunValueClass, 
         num_samples = 500,
-        discretize_continuous: bool = True,
+        discretize_continuous: bool | None = None,
+        island_mode: bool = False,
+        island_id: int | None = None,
       ):
     '''
-      Get an explainer for the selected `target`, given the
+    Get an explainer for the selected `target`, given the
       `base_state`
     '''
-    if isinstance(target, StepValueClass):
+    if discretize_continuous is None:
+      discretize_continuous = not island_mode
+    if island_mode:
+      if island_id is None:
+        raise ValueError("island_id is required in island_mode.")
+      base_position = self.pac.get_island_centroid(island_id)
+      map_min = np.asarray(self.pac.config.boundary[0], dtype=float)
+      map_size = np.asarray(self.pac.config.boundary[1], dtype=float) - map_min
+      base_position = ((base_position - map_min) / map_size) * 2 - 1
+      if isinstance(target, StepValueClass):
+        predict_column = {
+          StepValueClass.HEADING: 0,
+          StepValueClass.THROTTLE: 1,
+          StepValueClass.LREWARD: 2,
+        }[target]
+        predict_fn = lambda X: self.pac.eval_step_island_position_array(
+          X, island_id,
+        )[:, predict_column]
+      elif isinstance(target, RunValueClass):
+        if target is RunValueClass.REWARD_DELTA:
+          predict_fn = lambda X: self.pac.eval_run_island_position_array(
+            X, island_id,
+          )[:, 0]
+        elif target is RunValueClass.STEPCOUNT:
+          predict_fn = lambda X: self.pac.eval_run_island_position_array(
+            X, island_id,
+          )[:, 1]
+        elif target is RunValueClass.COLLISIONS:
+          predict_fn = lambda X: self.pac.eval_run_island_collision_probability_array(
+            X, island_id,
+          )
+        else:
+          raise ValueError(f"Unsupported run target: {target}")
+      else:
+        raise TypeError(f"Unsupported target type: {type(target).__name__}")
+      explainer = self.get_explainer(
+        mode="classification" if target is RunValueClass.COLLISIONS else "regression",
+        class_names=(
+          ["end", "island", "boundary", "time_out"]
+          if target is RunValueClass.COLLISIONS else None
+        ),
+        discretize_continuous=discretize_continuous,
+        island_mode=True,
+      )
+    elif isinstance(target, StepValueClass):
       predict_column = {
         StepValueClass.HEADING: 0,
         StepValueClass.THROTTLE: 1,
         StepValueClass.LREWARD: 2,
       }[target]
-      predict_fn = lambda X: self.ac.eval_step_perturbation_array(X)[:, predict_column]
+      predict_fn = lambda X: self.pac.eval_step_perturbation_array(X)[:, predict_column]
       explainer = self.get_explainer(
         discretize_continuous=discretize_continuous,
       )
     elif isinstance(target, RunValueClass):
       if target is RunValueClass.REWARD_DELTA:
-        predict_fn = lambda X: self.ac.eval_run_perturbation_array(X)[:, 0]
+        predict_fn = lambda X: self.pac.eval_run_perturbation_array(X)[:, 0]
         explainer = self.get_explainer(
           discretize_continuous=discretize_continuous,
         )
       elif target is RunValueClass.STEPCOUNT:
-        predict_fn = lambda X: self.ac.eval_run_perturbation_array(X)[:, 1]
+        predict_fn = lambda X: self.pac.eval_run_perturbation_array(X)[:, 1]
         explainer = self.get_explainer(
           discretize_continuous=discretize_continuous,
         )
       elif target is RunValueClass.COLLISIONS:
-        predict_fn = self.ac.eval_run_collision_probability_array
+        predict_fn = self.pac.eval_run_collision_probability_array
         explainer = self.get_explainer(
           mode="classification",
           class_names=["end", "island", "boundary", "time_out"],
@@ -344,20 +461,22 @@ class LimeExplainer():
       raise TypeError(f"Unsupported target type: {type(target).__name__}")
 
     explanation = explainer.explain_instance(
-      np.asarray(base_state, dtype=float),
+      base_position if island_mode else np.asarray(base_state, dtype=float),
       predict_fn=predict_fn,
-      num_features=8,
+      num_features=2 if island_mode else 8,
       num_samples=num_samples, sampling_method="lhs"
     )
     # Explanation does not retain a reference to its LimeTabularExplainer.
     # Keep the setting here so downstream grid evaluation can use the exact
     # feature representation used by this explanation.
     explanation._discretize_continuous = discretize_continuous
+    explanation._island_mode = island_mode
     return explanation
 
   def evaluate_surrogate(
       self, explanation, data: np.ndarray, label: int | None = None,
       discretize_continuous: bool | None = None,
+      island_mode: bool | None = None,
   ) -> np.ndarray:
     '''Evaluate a calculated LIME surrogate on one or more states.
 
@@ -368,8 +487,13 @@ class LimeExplainer():
     data = np.asarray(data, dtype=float)
     if data.ndim == 1:
       data = data.reshape(1, -1)
-    if data.ndim != 2 or data.shape[1] != 8:
-      raise ValueError(f"Expected data with shape (n, 8), got {data.shape}.")
+    if island_mode is None:
+      island_mode = getattr(explanation, "_island_mode", data.shape[1] == 2)
+    expected_features = 2 if island_mode else 8
+    if data.ndim != 2 or data.shape[1] != expected_features:
+      raise ValueError(
+        f"Expected data with shape (n, {expected_features}), got {data.shape}."
+      )
 
     if discretize_continuous is None:
       discretize_continuous = getattr(
@@ -380,6 +504,7 @@ class LimeExplainer():
     if explanation.mode == "regression":
       lime_explainer = self.get_explainer(
         discretize_continuous=discretize_continuous,
+        island_mode=island_mode,
       )
       label = 1 if label is None else label
     elif explanation.mode == "classification":
@@ -387,6 +512,7 @@ class LimeExplainer():
         mode="classification",
         class_names=["end", "island", "boundary", "time_out"],
         discretize_continuous=discretize_continuous,
+        island_mode=island_mode,
       )
       if label is None:
         labels = explanation.available_labels()
@@ -442,8 +568,8 @@ class LimeExplainer():
   
   def ghost_steps(self, obs):
     '''
-      Maps a (n, ) 12D observations (c.f.  build_observation), using the self.ac image
+      Maps a (n, ) 12D observations (c.f.  build_observation), using the self.pac image
       stacks to n local rewards.
     '''
     for ob in obs:
-      self.ac.model_step(True)
+      self.pac.model_step(True)
