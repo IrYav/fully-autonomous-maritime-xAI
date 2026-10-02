@@ -255,6 +255,8 @@ class LimeExplainer():
       target: StepValueClass | RunValueClass,
       source: Source = Source.LIME,
       theta_index: int = 0,
+      x_label = "ship x",
+      y_label = "ship y",
       ax=None,
   ):
     '''Draw one source/target slice of a grid as a heatmap.'''
@@ -276,8 +278,8 @@ class LimeExplainer():
     if ax is None:
       _, ax = plt.subplots()
     image = ax.pcolormesh(x_values, y_values, heatmap, shading="auto")
-    ax.set_xlabel("ship x")
-    ax.set_ylabel("ship y")
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
     ax.set_title(f"{source.name}: {target.name}, theta={field.theta_values[theta_index]:.3f}")
     ax.figure.colorbar(image, ax=ax)
     return ax
