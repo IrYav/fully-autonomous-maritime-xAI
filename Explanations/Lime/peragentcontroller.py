@@ -9,7 +9,8 @@ from collections.abc import Iterable
 import numpy as np
 import math
 from shapely.affinity import translate
-from shapely.geometry import MultiPolygon
+from shapely.geometry import MultiPolygon, Point
+from shapely.ops import unary_union
 
 from Simulation.Environment.environment import Environment
 
@@ -75,6 +76,18 @@ class PerAgentController(AgentController):
     '''Return the current island centroid as a physical ``(x, y)`` point.'''
     return np.asarray(self.get_island(island_id).centroid.coords[0], dtype=float)
 
+  def get_island_id_at(self, position) -> int | None:
+    '''Return the first island covering ``position``, or ``None``.
+
+    If islands overlap, the first matching island in
+      the environment's list is returned.
+    '''
+    point = Point(np.asarray(position, dtype=float))
+    for island_id, island in enumerate(self.sim_state.env.island_list):
+      if island.covers(point):
+        return island_id
+    return None
+
   def _apply_island_perturbation_from(
       self,
       perturbation: IslandPerturbation,
@@ -89,13 +102,23 @@ class PerAgentController(AgentController):
         f"island_id {island_id} out of range for {len(islands)} islands."
       )
 
-    islands[island_id] = translate(
-      islands[island_id],
+    base_island = islands.pop(island_id)
+    moved_island = translate(
+      base_island,
       xoff=float(perturbation.dx),
       yoff=float(perturbation.dy),
     )
+    combined_islands = unary_union([*islands, moved_island])
+    if combined_islands.geom_type == "Polygon":
+      combined_islands = MultiPolygon([combined_islands])
+    elif combined_islands.geom_type != "MultiPolygon":
+      raise ValueError(
+        "Combining the perturbed island produced an unsupported geometry "
+        f"type: {combined_islands.geom_type}."
+      )
+
     new_env = Environment(
-      MultiPolygon(islands),
+      combined_islands,
       base_env.corridor,
       base_env.start,
       base_env.end_poly,
@@ -212,6 +235,16 @@ class PerAgentController(AgentController):
 
     return result
 
+  def _restore_island_base(
+      self, base_env: Environment, base_ship, base_steps: int
+  ) -> None:
+    '''Restore the exact environment and ship used for an island evaluation.'''
+    self.new_training_instance(
+      pre_made_env=base_env,
+      pre_made_ship=base_ship,
+    )
+    self.sim_state.steps = base_steps
+
   def eval_step_island_perturbations(
       self, pers: Iterable[IslandPerturbation], island_id: int
   ) -> np.ndarray:
@@ -232,10 +265,7 @@ class PerAgentController(AgentController):
         action = np.asarray(step["action"], dtype=float).reshape(-1)
         result[i] = [action[0], action[1], step["reward"]]
     finally:
-      self._apply_island_perturbation_from(
-        IslandPerturbation(0.0, 0.0), island_id,
-        base_env, base_ship, base_steps,
-      )
+      self._restore_island_base(base_env, base_ship, base_steps)
 
     return result
 
@@ -293,10 +323,7 @@ class PerAgentController(AgentController):
     result = np.empty((len(pers), 3), dtype=float)
 
     try:
-      self._apply_island_perturbation_from(
-        IslandPerturbation(0.0, 0.0), island_id,
-        base_env, base_ship, base_steps,
-      )
+      self._restore_island_base(base_env, base_ship, base_steps)
       base_reward, _, _ = self.finish_episode()
 
       for i, per in enumerate(pers):
@@ -311,10 +338,7 @@ class PerAgentController(AgentController):
           self._collision_category(cols),
         ]
     finally:
-      self._apply_island_perturbation_from(
-        IslandPerturbation(0.0, 0.0), island_id,
-        base_env, base_ship, base_steps,
-      )
+      self._restore_island_base(base_env, base_ship, base_steps)
 
     return result
 
