@@ -153,6 +153,7 @@ def _explain_candidate(
     candidate: RunCandidate,
     target: RunValueClass,
     num_samples: int,
+    explanation_num_features: int,
     discretize_continuous: bool,
 ):
   pac = lime.pac
@@ -175,7 +176,7 @@ def _explain_candidate(
   explanation = explainer.explain_instance(
     candidate.state,
     predict_fn=_predict_fn_for_target(pac, target),
-    num_features=8,
+    num_features=explanation_num_features,
     num_samples=num_samples,
     sampling_method="lhs",
     **kwargs,
@@ -185,8 +186,16 @@ def _explain_candidate(
   return explanation
 
 
-def _explanation_matrix(explanations: list, classification: bool):
-  """Convert LIME feature weights into the SP-LIME matrix ``W``."""
+def _explanation_matrix(
+    explanations: list,
+    classification: bool,
+    selection_num_features: int | None = None,
+):
+  """Convert LIME feature weights into the SP-LIME matrix ``W``.
+
+  ``selection_num_features`` limits only the features used for SP-LIME's
+  coverage calculation. The original explanation objects remain unchanged.
+  """
   features: dict[str, int] = {}
   rows = []
 
@@ -194,7 +203,14 @@ def _explanation_matrix(explanations: list, classification: bool):
     labels = explanation.available_labels() if classification else [1]
     row: list[tuple[str, float]] = []
     for label in labels:
-      row.extend(explanation.as_list(label=label))
+      label_features = sorted(
+        explanation.as_list(label=label),
+        key=lambda item: abs(float(item[1])),
+        reverse=True,
+      )
+      if selection_num_features is not None:
+        label_features = label_features[:selection_num_features]
+      row.extend(label_features)
     rows.append(row)
     for feature, _ in row:
       if feature not in features:
@@ -239,12 +255,51 @@ def select_run_explanations(
     k: int,
     num_samples: int = 500,
     discretize_continuous: bool = False,
+    explanation_num_features: int = 8,
+    selection_num_features: int | None = None,
 ) -> list[RunExplanation]:
-  """Select up to ``k`` representative run-start explanations.
+  """Select representative run-start explanations using SP-LIME.
 
-  Every candidate is explained in its own environment and ship.  The
-  controller is restored to its original context after the complete operation
-  and after any candidate-level failure.
+  Each candidate represents one stored run. Its reduced 8-D start vector is
+  explained in that candidate's own environment and ship, rather than in one
+  shared scenario. LIME generates ``num_samples`` local perturbations for
+  every candidate and fits a local surrogate with at most
+  ``explanation_num_features`` features.
+
+  SP-LIME then builds its explanation matrix and greedily selects up to ``k``
+  candidates according to the submodular coverage criterion. By default, all
+  features present in each explanation contribute to that matrix. If
+  ``selection_num_features`` is provided, only the strongest features per
+  explanation, ranked by absolute local weight, contribute to coverage. The
+  returned explanation objects are not truncated by this setting.
+
+  The expensive part is candidate explanation generation, so runtime is
+  approximately proportional to ``len(candidates) * num_samples`` and is
+  independent of ``k``. The controller is restored to its original
+  environment, ship, and step count after the complete operation, including
+  when candidate evaluation raises an exception.
+
+  Args:
+    lime: The ``LimeExplainer`` whose ``PerAgentController`` evaluates the
+      candidate-specific perturbations.
+    candidates: Run-start candidates to explain. Every candidate must have
+      an 8-D state and its own environment and ship.
+    target: Run-level target to explain. Collision targets use the four-class
+      one-hot probability output.
+    k: Maximum number of representative candidates to return. If ``k`` is
+      larger than the candidate count, all candidates are returned.
+    num_samples: Number of local LIME samples generated per candidate.
+    explanation_num_features: Maximum number of features retained by each
+      returned LIME explanation. Defaults to all eight features.
+    selection_num_features: Optional number of strongest features used per
+      explanation for SP-LIME coverage. ``None`` uses all returned features.
+    discretize_continuous: Whether LIME should discretize continuous input
+      features.
+
+  Returns:
+    A list of ``RunExplanation`` records. Each record contains the selected
+    source ID, full LIME explanation, 8-D state, and defensive copies of the
+    associated environment and ship.
   """
   if not isinstance(target, RunValueClass):
     raise TypeError(f"target must be a RunValueClass, got {type(target).__name__}")
@@ -252,6 +307,10 @@ def select_run_explanations(
     raise ValueError("k must be non-negative")
   if num_samples < 1:
     raise ValueError("num_samples must be positive")
+  if explanation_num_features < 1:
+    raise ValueError("explanation_num_features must be positive")
+  if selection_num_features is not None and selection_num_features < 1:
+    raise ValueError("selection_num_features must be positive or None")
 
   candidates = list(candidates)
   if not candidates or k == 0:
@@ -268,7 +327,8 @@ def select_run_explanations(
   try:
     for candidate in candidates:
       explanations.append(_explain_candidate(
-        lime, candidate, target, num_samples, discretize_continuous,
+        lime, candidate, target, num_samples, explanation_num_features,
+        discretize_continuous,
       ))
   finally:
     _restore_pac(pac, original_env, original_ship, original_steps)
@@ -276,6 +336,7 @@ def select_run_explanations(
   weights = _explanation_matrix(
     explanations,
     classification=target is RunValueClass.COLLISIONS,
+    selection_num_features=selection_num_features,
   )
   selected_indices = _pick_indices(weights, k)
 
