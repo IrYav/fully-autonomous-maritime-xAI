@@ -18,11 +18,11 @@ class LimeExplainer():
   pac : PerAgentController
   explainer : LimeTabularExplainer
 
-  def __init__(self, pac: PerAgentController):
+  def __init__(self, pac: PerAgentController, sample_around_instance: bool | None = None):
     self.pac = pac
     self._explainer_cache = {}
     # Keep the default regression explainer available for compatibility.
-    self.explainer = self.get_explainer()
+    self.explainer = self.get_explainer(sample_around_instance=sample_around_instance)
 
   def get_explainer(
       self, mode: str = "regression", class_names: list[str] | None = None,
