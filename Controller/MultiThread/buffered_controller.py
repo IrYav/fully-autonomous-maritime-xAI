@@ -85,8 +85,10 @@ class BufferedMTController(BaseController):
     """
     return build_scenario(self.config, difficulty)
 
-  def _get_scenario(self, difficulty: Difficulty):
+  def _get_scenario(self, difficulty: Difficulty, pre_made_env = None):
     """
+    `pre_made_env` is ignored!
+
     Prefer buffered scenarios for the requested difficulty.
     Outdated scenarios are discarded.
     If the buffer is empty, build synchronously in the current thread.
