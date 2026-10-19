@@ -45,7 +45,7 @@ Selecting also respects polygon choice, allowing the three basic affine transfor
 
 With the reset you have a quick way to save a certain scenario or ship state, to allow you to quickly iterate over similar starting conditions.
 
-Lastly you can save and load scenarios, with `Scenarios/` containing a set of manually crafted scenarios and `Explanations/Samples/runXXXX` containing a scenario each as well, with `run0000` to `run0072`
+Lastly you can save and load scenarios, with `Scenarios/` containing a set of manually crafted scenarios and `Explanations/Samples/runXXXX` each containing a scenario each as well, for `run0000` to `run0072`
 
 ## Training the Agent
 
